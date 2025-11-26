@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 import time
 from typing import Dict, List, Any, Optional
 import io
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -290,6 +292,16 @@ st.markdown("""
     .status-warning { background: #ffc107; color: #000; }
     .status-error { background: #dc3545; color: white; }
     .status-info { background: #17a2b8; color: white; }
+
+    /* Tab header styling */
+    .tab-header {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 10px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -316,8 +328,22 @@ WEBHOOK_CONFIG = {
     }
 }
 
+# Google Sheets integration details
+# --- Google Sheets Configuration ---
+# NOTE: For production, use a service account with proper OAuth2 authentication.
+# For demonstration purposes, we'll use a public URL, but this is NOT secure.
+# Replace with your actual service account JSON file path or credentials.
+# GOOGLE_SHEETS_CREDENTIALS = 'path/to/your/service_account.json' # For production
+GOOGLE_SHEETS_URL = f"https://docs.google.com/spreadsheets/d/1eFZcnDoGT2NJHaEQSgxW5psN5kvlkYx1vtuXGRFTGTk/gviz/tq?sheet=demo_examples" # Public URL for demo
 GOOGLE_SHEETS_ID = "1eFZcnDoGT2NJHaEQSgxW5psN5kvlkYx1vtuXGRFTGTk"
 GOOGLE_SHEETS_SHEET_NAME = "demo_examples"
+# Google Sheets API scope
+GOOGLE_SHEETS_SCOPE = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
+# -----------------------------------
+
 
 # Agent categories with descriptions
 AGENT_CATEGORIES = {
@@ -399,6 +425,14 @@ def initialize_session_state():
         st.session_state.edited_code = None
     if 'webhook_test_results' not in st.session_state:
         st.session_state.webhook_test_results = {}
+    # Initialize Google Sheets specific state
+    if 'gsheet_client' not in st.session_state:
+        st.session_state.gsheet_client = None
+    if 'show_structure' not in st.session_state:
+        st.session_state.show_structure = False
+    if 'gsheet_sync_message' not in st.session_state:
+        st.session_state.gsheet_sync_message = ""
+    # ---------------------------------------
 
 initialize_session_state()
 
@@ -536,31 +570,325 @@ def test_webhook_connection(webhook_type: str) -> Dict[str, Any]:
             "error": str(e)
         }
 
-def fetch_google_sheets_data() -> Optional[pd.DataFrame]:
-    """Fetch data from Google Sheets (placeholder for demo)."""
+# Function to fetch data from Google Sheets
+# def fetch_google_sheets_data() -> Optional[pd.DataFrame]:
+#     """Fetch data from Google Sheets using gspread."""
+#     try:
+#         # Initialize gspread client if not already done
+#         if st.session_state.gsheet_client is None:
+#             # Using service account for authentication (recommended for production)
+#             # For demo purposes, you might need to make the sheet public or use a simpler method
+#             # For demonstration, let's try to fetch via public URL if credentials aren't set up
+#             try:
+#                 # Attempt with service account if configured
+#                 # scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+#                 # credentials = Credentials.from_service_account_file(GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
+#                 # st.session_state.gsheet_client = gspread.authorize(credentials)
+#                 # sheet = st.session_state.gsheet_client.open_by_key(GOOGLE_SHEETS_ID).worksheet(GOOGLE_SHEETS_SHEET_NAME)
+#                 # data = sheet.get_all_records()
+
+#                 # Fallback to public URL if service account fails or is not set up
+#                 url = GOOGLE_SHEETS_URL.replace('sheet=demo_examples', f'sheet={GOOGLE_SHEETS_SHEET_NAME}')
+#                 response = requests.get(url)
+#                 response.raise_for_status() # Raise an exception for bad status codes
+                
+#                 # Parse the JSON response
+#                 data_str = response.text.split('google.visualization.Query.setResponse(', 1)[1].rsplit(');', 1)[0]
+#                 data_json = json.loads(data_str)
+                
+#                 # Extract data and columns
+#                 rows = data_json.get('rows', [])
+#                 cols = data_json.get('table', {}).get('cols', [])
+                
+#                 column_names = [col.get('label', f'col{i}') for i, col in enumerate(cols)]
+                
+#                 processed_data = []
+#                 for row in rows:
+#                     row_values = {}
+#                     cells = row.get('c', [])
+#                     for i, cell in enumerate(cells):
+#                         if i < len(column_names):
+#                             value = cell.get('v') if cell else None
+#                             # Attempt to parse datetime strings
+#                             if isinstance(value, str) and len(value) > 10 and value[4] == '-' and value[7] == '-' and value[10] == 'T':
+#                                 try:
+#                                     value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+#                                 except ValueError:
+#                                     pass # Keep as string if parsing fails
+#                             row_values[column_names[i]] = value
+#                     processed_data.append(row_values)
+
+#                 df = pd.DataFrame(processed_data)
+
+#             except Exception as e:
+#                 st.warning(f"Could not fetch data from Google Sheets. Error: {str(e)}. Ensure sheet is shared publicly or service account is configured correctly.")
+#                 return None
+#         
+#         # If using gspread, uncomment the following line and comment out the request part
+#         # df = pd.DataFrame(data)
+        
+#         if not df.empty:
+#             st.session_state.last_gsheet_update = datetime.now()
+#             st.session_state.gsheet_sync_message = f"Successfully fetched {len(df)} rows."
+#         else:
+#             st.session_state.gsheet_sync_message = "No data found in Google Sheets."
+            
+#         return df
+    
+#     except Exception as e:
+#         st.warning(f"Could not fetch Google Sheets data: {str(e)}")
+#         st.session_state.gsheet_sync_message = f"Error fetching data: {str(e)}"
+#         return None
+# -----------------------------------
+
+# ============================================================================
+# GOOGLE SHEETS FUNCTIONS
+# ============================================================================
+
+def get_google_sheets_client():
+    """Initialize Google Sheets client with credentials."""
     try:
-        # In production, use gspread library with OAuth2 credentials
-        sample_data = {
-            "Number": list(range(1, len(st.session_state.generated_codes) + 1)),
-            "Title": [c['prompt'][:50] for c in st.session_state.generated_codes],
-            "Category": [c['category'] for c in st.session_state.generated_codes],
-            "Description": [c['prompt'] for c in st.session_state.generated_codes],
-            "Code": [c['code'][:100] + "..." for c in st.session_state.generated_codes],
-            "PDF_Enabled": ["Yes"] * len(st.session_state.generated_codes),
-            "Timestamp": [c['timestamp'].isoformat() for c in st.session_state.generated_codes],
-            "Agent_Name": [c['agent'] for c in st.session_state.generated_codes]
-        }
+        # Check if credentials are in Streamlit secrets
+        if 'gcp_service_account' in st.secrets:
+            credentials = Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"],
+                scopes=GOOGLE_SHEETS_SCOPE
+            )
+            client = gspread.authorize(credentials)
+            return client
+        else:
+            # Fallback to public URL if no credentials found (for demo purposes)
+            return None
+    except Exception as e:
+        st.warning(f"⚠️ Could not initialize Google Sheets client: {str(e)}. Falling back to demo data.")
+        return None
+
+def fetch_google_sheets_data() -> Optional[pd.DataFrame]:
+    """Fetch data from Google Sheets with exact column mapping."""
+    try:
+        client = get_google_sheets_client()
         
-        df = pd.DataFrame(sample_data)
+        if client is None:
+            # Provide demo data if no credentials are set up
+            st.info("📊 Using demo data. Add Google Sheets credentials to Streamlit secrets to load real data.")
+            demo_data = {
+                "Number": [1, 2, 3, 4, 5],
+                "Title": [
+                    "Modern Landing Page Template",
+                    "Professional Invoice Template",
+                    "Company Email Signature",
+                    "Basic Contact Form HTML",
+                    "Streamlit Dashboard for Sales"
+                ],
+                "Category": ["Landing Page", "Invoice", "Email", "Form", "Streamlit"],
+                "Description": [
+                    "A responsive, visually appealing landing page for a tech startup.",
+                    "A clean and calculable invoice with fields for items, taxes, and total.",
+                    "Branded email signature with social media links and contact info.",
+                    "A simple HTML form with basic validation for user input.",
+                    "A Streamlit application to visualize sales data with interactive charts."
+                ],
+                "Code": [
+                    """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Landing Page</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; background-color: #f4f7f6; }
+        .hero { text-align: center; padding: 50px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        p { color: #666; }
+        .cta-button { background-color: #667eea; color: white; padding: 12px 25px; border: none; border-radius: 5px; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <h1>Welcome to Our Amazing Product!</h1>
+        <p>Revolutionize your workflow with our cutting-edge solution.</p>
+        <a href="#" class="cta-button">Get Started Today</a>
+    </div>
+</body>
+</html>
+                    """,
+                    """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Invoice</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .total { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>INVOICE</h1>
+    <p><strong>Invoice #:</strong> 12345</p>
+    <p><strong>Date:</strong> 2023-10-27</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Service A</td>
+                <td>2</td>
+                <td>$100.00</td>
+                <td>$200.00</td>
+            </tr>
+            <tr>
+                <td>Product B</td>
+                <td>1</td>
+                <td>$50.00</td>
+                <td>$50.00</td>
+            </tr>
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3" class="total">Subtotal</td>
+                <td>$250.00</td>
+            </tr>
+            <tr>
+                <td colspan="3" class="total">Tax (10%)</td>
+                <td>$25.00</td>
+            </tr>
+            <tr>
+                <td colspan="3" class="total">Grand Total</td>
+                <td>$275.00</td>
+            </tr>
+        </tfoot>
+    </table>
+</body>
+</html>
+                    """,
+                    """
+<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333;">
+    <p>Best regards,<br>
+    <strong>John Doe</strong><br>
+    Web Developer<br>
+    <a href="mailto:john.doe@example.com" style="color: #667eea; text-decoration: none;">john.doe@example.com</a> | 
+    <a href="https://www.example.com" style="color: #667eea; text-decoration: none;">www.example.com</a> | 
+    <a href="https://linkedin.com/in/johndoe" style="color: #667eea; text-decoration: none;">LinkedIn</a>
+    </p>
+</div>
+                    """,
+                    """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Contact Form</title>
+    <style>
+        body { font-family: sans-serif; }
+        .form-container { width: 400px; margin: 50px auto; padding: 30px; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="text"], input[type="email"], textarea { width: calc(100% - 20px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #667eea; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h2>Contact Us</h2>
+        <form action="/submit-form" method="post">
+            <label for="name">Name:</label>
+            <input type="text" id="name" name="name" required>
+            
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+            
+            <label for="message">Message:</label>
+            <textarea id="message" name="message" rows="4" required></textarea>
+            
+            <button type="submit">Send Message</button>
+        </form>
+    </div>
+</body>
+</html>
+                    """,
+                    """
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+st.set_page_config(layout="wide")
+
+st.title("Sales Dashboard 📈")
+
+# Sample Data
+data = {
+    'Date': pd.to_datetime(['2023-10-20', '2023-10-21', '2023-10-22', '2023-10-23', '2023-10-24']),
+    'Region': ['North', 'South', 'East', 'West', 'North'],
+    'Sales': [150, 200, 180, 220, 160],
+    'Profit': [30, 45, 40, 50, 35]
+}
+df = pd.DataFrame(data)
+
+# Charts
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("Sales Over Time")
+    fig_sales = px.line(df, x='Date', y='Sales', title='Daily Sales')
+    st.plotly_chart(fig_sales, use_container_width=True)
+
+with col2:
+    st.subheader("Sales by Region")
+    fig_region = px.bar(df, x='Region', y='Sales', title='Sales per Region')
+    st.plotly_chart(fig_region, use_container_width=True)
+
+st.subheader("Data Table")
+st.dataframe(df)
+                    """
+                ],
+                "PDF_Enabled": ["TRUE", "TRUE", "FALSE", "FALSE", "FALSE"],
+                "Timestamp": [datetime.now().isoformat()] * 5,
+                "Agent_Name": ["Landing Page Generator", "Invoice Generator", "Email Signature Generator", "Form Generator", "Streamlit Dashboard Generator"]
+            }
+            return pd.DataFrame(demo_data)
         
-        if len(df) > 0:
-            st.session_state.last_gsheet_update = datetime.now()
+        # If client is available, fetch from Google Sheets
+        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = sheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
         
-        return df if len(df) > 0 else None
+        # Get all values including headers
+        data = worksheet.get_all_values()
+        
+        if len(data) < 2:
+            st.warning("⚠️ Google Sheet is empty or has no data rows.")
+            return None
+        
+        headers = data[0]
+        rows = data[1:]
+        
+        df = pd.DataFrame(rows, columns=headers)
+        
+        # Convert Number and PDF_Enabled columns to appropriate types if they exist
+        if 'Number' in df.columns:
+            df['Number'] = pd.to_numeric(df['Number'], errors='coerce')
+        if 'PDF_Enabled' in df.columns:
+            df['PDF_Enabled'] = df['PDF_Enabled'].apply(lambda x: x.lower() == 'true' if pd.notna(x) else False)
+
+        # Update last sync time
+        st.session_state.last_gsheet_update = datetime.now()
+        st.session_state.gsheet_sync_message = f"Successfully fetched {len(df)} rows."
+        
+        return df
     
     except Exception as e:
-        st.warning(f"Could not fetch Google Sheets data: {str(e)}")
+        st.error(f"❌ Error fetching Google Sheets data: {str(e)}")
+        st.session_state.gsheet_sync_message = f"Error fetching data: {str(e)}"
         return None
+# -----------------------------------
+
 
 def format_code_preview(code: str, language: str = "html", max_lines: int = 30) -> str:
     """Format code for preview display."""
@@ -653,7 +981,7 @@ with st.sidebar:
     st.markdown('<div class="sidebar-title">⚡ Quick Actions</div>', unsafe_allow_html=True)
     
     if st.button("🔄 Refresh All Data", use_container_width=True):
-        st.session_state.gsheet_data = fetch_google_sheets_data()
+        st.session_state.gsheet_data = fetch_google_sheets_data() # Refresh GSheet data
         st.rerun()
     
     if st.button("🗑️ Clear All History", use_container_width=True, type="secondary"):
@@ -710,6 +1038,8 @@ with st.sidebar:
     if st.button("🔄 Sync to Sheets", use_container_width=True):
         with st.spinner("Syncing..."):
             st.session_state.gsheet_data = fetch_google_sheets_data()
+            if st.session_state.gsheet_sync_message:
+                st.info(st.session_state.gsheet_sync_message) # Display sync status
             if st.session_state.gsheet_data is not None:
                 st.success(f"✅ Synced {len(st.session_state.gsheet_data)} records!")
             else:
@@ -1710,217 +2040,214 @@ with tab5:
 # ============================================================================
 
 with tab6:
-    st.markdown("### 📥 Google Sheets Integration")
-    st.markdown("Sync and manage your generated content with Google Sheets for easy collaboration and backup.")
+    st.markdown('<div class="tab-header">📥 Google Sheets Integration</div>', unsafe_allow_html=True)
     
-    # Sheet information
-    st.markdown("#### 📊 Sheet Configuration")
+    # Connection info
+    st.info(f"📊 **Sheet ID:** `{GOOGLE_SHEETS_ID}`\n\n📄 **Sheet Name:** `{GOOGLE_SHEETS_SHEET_NAME}`")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([2, 1, 1])
     
     with col1:
-        st.markdown(f"**📋 Sheet ID:**")
-        st.code(GOOGLE_SHEETS_ID, language=None)
+        st.markdown("### 🔄 Data Synchronization")
     
     with col2:
-        st.markdown(f"**📑 Sheet Name:**")
-        st.code(GOOGLE_SHEETS_SHEET_NAME, language=None)
-    
-    st.markdown("---")
-    
-    # Action buttons
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("🔄 Fetch Latest Data", use_container_width=True, type="primary"):
+        if st.button("🔄 Refresh Data", use_container_width=True, key="refresh_gsheet"):
             with st.spinner("Fetching data from Google Sheets..."):
-                progress_bar = st.progress(0)
-                for i in range(100):
-                    time.sleep(0.01)
-                    progress_bar.progress(i + 1)
-                
-                st.session_state.gsheet_data = fetch_google_sheets_data()
-                progress_bar.empty()
-                
-                if st.session_state.gsheet_data is not None and len(st.session_state.gsheet_data) > 0:
-                    st.success(f"✅ Successfully loaded {len(st.session_state.gsheet_data)} rows from Google Sheets!")
+                df = fetch_google_sheets_data()
+                if df is not None:
+                    st.session_state.gsheet_data = df
+                    st.success(f"✅ Loaded {len(df)} records!")
+                    st.rerun()
                 else:
-                    st.info("ℹ️ No data available in Google Sheets yet. Generate some code to populate it!")
-    
-    with col2:
-        if st.button("📋 View Sheet Structure", use_container_width=True):
-            st.session_state.show_structure = True
+                    st.error("❌ Failed to load data")
     
     with col3:
-        if st.button("📤 Push Current Data", use_container_width=True):
-            if st.session_state.generated_codes:
-                with st.spinner("Syncing data to Google Sheets..."):
-                    time.sleep(1)
-                    st.success(f"✅ Synced {len(st.session_state.generated_codes)} records to Google Sheets!")
-            else:
-                st.warning("⚠️ No data to sync yet!")
+        if st.button("📤 Sync to Sheet", use_container_width=True, key="sync_to_gsheet"):
+            st.info("🔄 Sync feature requires write permissions and is not fully implemented in this demo.")
+            # In a real implementation, this would push data from session_state.generated_codes
+            # to the Google Sheet using gspread.
+            # For now, it's a placeholder.
     
-    # Show structure if requested
-    if st.session_state.get('show_structure', False):
-        st.markdown("---")
-        st.markdown("#### 📋 Google Sheets Column Structure")
-        
-        structure_data = {
-            "Column Name": ["Number", "Title", "Category", "Description", "Code", "PDF_Enabled", "Timestamp", "Agent_Name"],
-            "Data Type": ["Integer", "String", "String", "String", "Text", "Boolean", "DateTime", "String"],
-            "Description": [
-                "Sequential ID for each entry",
-                "Brief summary of user request",
-                "AI-classified category",
-                "Detailed description of the code",
-                "Full generated code content",
-                "Flag for PDF export capability",
-                "ISO 8601 timestamp",
-                "Name of the generator agent used"
-            ]
-        }
-        
-        st.table(pd.DataFrame(structure_data))
-        
-        if st.button("❌ Close Structure View"):
-            st.session_state.show_structure = False
-            st.rerun()
+    # Load data if not already loaded
+    if 'gsheet_data' not in st.session_state or st.session_state.gsheet_data is None:
+        with st.spinner("Loading Google Sheets data..."):
+            df = fetch_google_sheets_data()
+            if df is not None:
+                st.session_state.gsheet_data = df
     
-    st.markdown("---")
-    
-    # Display Google Sheets data
+    # Display data
     if st.session_state.gsheet_data is not None and len(st.session_state.gsheet_data) > 0:
-        st.markdown("#### 📊 Google Sheets Data Preview")
+        df = st.session_state.gsheet_data
         
-        # Data summary
+        st.markdown("---")
+        
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("📝 Total Rows", len(st.session_state.gsheet_data))
+            st.metric("📊 Total Records", len(df))
         with col2:
-            st.metric("📂 Columns", len(st.session_state.gsheet_data.columns))
+            st.metric("📂 Columns", len(df.columns))
         with col3:
-            if 'Agent_Name' in st.session_state.gsheet_data.columns:
-                unique_agents = st.session_state.gsheet_data['Agent_Name'].nunique()
-                st.metric("🤖 Unique Agents", unique_agents)
-        with col4:
-            if 'Category' in st.session_state.gsheet_data.columns:
-                unique_categories = st.session_state.gsheet_data['Category'].nunique()
+            if 'Category' in df.columns:
+                unique_categories = df['Category'].nunique()
                 st.metric("🏷️ Categories", unique_categories)
+        with col4:
+            if 'PDF_Enabled' in df.columns:
+                pdf_count = (df['PDF_Enabled'] == True).sum() # Ensure boolean comparison
+                st.metric("📄 PDF Enabled", pdf_count)
         
         st.markdown("---")
         
-        # Data table with enhanced display
-        st.dataframe(
-            st.session_state.gsheet_data,
-            use_container_width=True,
-            height=500,
-            hide_index=True
-        )
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            search_term = st.text_input("🔍 Search in Title or Description", key="gsheet_search")
+        
+        with col2:
+            if 'Category' in df.columns:
+                categories = ['All'] + sorted(df['Category'].unique().tolist())
+                selected_category = st.selectbox("🏷️ Filter by Category", categories, key="gsheet_category")
+        
+        # Apply filters
+        filtered_df = df.copy()
+        
+        if search_term:
+            mask = False
+            if 'Title' in filtered_df.columns:
+                mask |= filtered_df['Title'].astype(str).str.contains(search_term, case=False, na=False)
+            if 'Description' in filtered_df.columns:
+                mask |= filtered_df['Description'].astype(str).str.contains(search_term, case=False, na=False)
+            filtered_df = filtered_df[mask]
+        
+        if 'Category' in df.columns and selected_category != 'All':
+            filtered_df = filtered_df[filtered_df['Category'] == selected_category]
+        
+        st.markdown(f"**Showing {len(filtered_df)} of {len(df)} records**")
+        
+        if st.checkbox("📋 Show as Cards", value=True, key="show_cards"):
+            for idx, row in filtered_df.iterrows():
+                with st.expander(f"#{row.get('Number', idx+1)} - {row.get('Title', 'Untitled')}"):
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.markdown(f"**Category:** {row.get('Category', 'N/A')}")
+                        st.markdown(f"**Description:** {row.get('Description', 'No description')}")
+                        st.markdown(f"**PDF Enabled:** {row.get('PDF_Enabled', 'N/A')}")
+                    
+                    with col2:
+                        if 'Code' in row and pd.notna(row['Code']):
+                            if st.button(f"👁️ View Code", key=f"view_code_{idx}"):
+                                st.code(row['Code'], language='html')
+                            
+                            if st.button(f"📥 Download", key=f"download_{idx}"):
+                                st.download_button(
+                                    label="⬇️ Download HTML",
+                                    data=row['Code'],
+                                    file_name=f"{row.get('Title', 'code').replace(' ', '_')}.html",
+                                    mime="text/html",
+                                    key=f"dl_btn_{idx}"
+                                )
+        else:
+            st.dataframe(
+                filtered_df,
+                use_container_width=True,
+                height=500,
+                hide_index=True
+            )
         
         st.markdown("---")
         
-        # Export options
         st.markdown("#### 📥 Export Sheet Data")
         
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            csv = st.session_state.gsheet_data.to_csv(index=False)
+            csv_data = filtered_df.to_csv(index=False)
             st.download_button(
-                label="📥 CSV",
-                data=csv,
-                file_name=f"gsheet_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                label="📄 Download CSV",
+                data=csv_data,
+                file_name=f"google_sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
         
         with col2:
-            json_data = st.session_state.gsheet_data.to_json(orient='records')
+            json_data = filtered_df.to_json(orient='records', indent=2)
             st.download_button(
-                label="📥 JSON",
+                label="📋 Download JSON",
                 data=json_data,
-                file_name=f"gsheet_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                file_name=f"google_sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                 mime="application/json",
                 use_container_width=True
             )
         
         with col3:
-            # Excel export
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                st.session_state.gsheet_data.to_excel(writer, index=False, sheet_name='Data')
-            buffer.seek(0)
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                filtered_df.to_excel(writer, index=False, sheet_name='Data')
+            excel_data = excel_buffer.getvalue()
             
             st.download_button(
-                label="📥 Excel",
-                data=buffer.getvalue(),
-                file_name=f"gsheet_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                label="📊 Download Excel",
+                data=excel_data,
+                file_name=f"google_sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
         
         with col4:
-            # HTML export
-            html = st.session_state.gsheet_data.to_html(index=False)
+            html_data = filtered_df.to_html(index=False)
             st.download_button(
-                label="📥 HTML",
-                data=html,
-                file_name=f"gsheet_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                label="🌐 Download HTML",
+                data=html_data,
+                file_name=f"google_sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                 mime="text/html",
                 use_container_width=True
             )
         
-        # Data filtering
-        st.markdown("---")
-        st.markdown("#### 🔍 Filter & Search Data")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if 'Category' in st.session_state.gsheet_data.columns:
-                selected_categories = st.multiselect(
-                    "Filter by Category",
-                    options=st.session_state.gsheet_data['Category'].unique().tolist()
+        if 'Category' in df.columns:
+            st.markdown("---")
+            st.markdown("#### 📊 Category Distribution")
+            
+            category_counts = df['Category'].value_counts()
+            
+            fig = go.Figure(data=[
+                go.Pie(
+                    labels=category_counts.index,
+                    values=category_counts.values,
+                    hole=0.4,
+                    marker=dict(colors=px.colors.qualitative.Set3)
                 )
-        
-        with col2:
-            if 'Agent_Name' in st.session_state.gsheet_data.columns:
-                selected_agents = st.multiselect(
-                    "Filter by Agent",
-                    options=st.session_state.gsheet_data['Agent_Name'].unique().tolist()
-                )
-        
-        # Apply filters
-        if selected_categories or selected_agents:
-            filtered_data = st.session_state.gsheet_data.copy()
+            ])
             
-            if selected_categories:
-                filtered_data = filtered_data[filtered_data['Category'].isin(selected_categories)]
+            fig.update_layout(
+                height=400,
+                showlegend=True,
+                title_text="Templates by Category"
+            )
             
-            if selected_agents:
-                filtered_data = filtered_data[filtered_data['Agent_Name'].isin(selected_agents)]
-            
-            st.markdown(f"**Showing {len(filtered_data)} filtered rows:**")
-            st.dataframe(filtered_data, use_container_width=True, height=400)
+            st.plotly_chart(fig, use_container_width=True)
     
     else:
-        st.info("📭 No data in Google Sheets yet. Generate some code and it will automatically be logged to Google Sheets!")
+        st.warning("⚠️ No data loaded from Google Sheets. Click 'Refresh Data' to load or configure your credentials.")
         
-        # Show sample of what will be synced
-        if st.session_state.generated_codes:
-            st.markdown("---")
-            st.markdown("#### 📊 Preview: Data Ready for Sync")
-            
-            sample_data = {
-                "Number": list(range(1, min(6, len(st.session_state.generated_codes) + 1))),
-                "Title": [c['prompt'][:50] for c in st.session_state.generated_codes[:5]],
-                "Category": [c['category'] for c in st.session_state.generated_codes[:5]],
-                "Agent_Name": [c['agent'] for c in st.session_state.generated_codes[:5]]
-            }
-            
-            st.dataframe(pd.DataFrame(sample_data), use_container_width=True)
-            
-            st.caption(f"✨ {len(st.session_state.generated_codes)} total items ready to sync")
+        st.markdown("---")
+        st.markdown("### 📚 Setup Instructions")
+        st.markdown("""
+        To connect to your Google Sheet:
+        
+        1. Create a Google Cloud Project
+        2. Enable Google Sheets API and Google Drive API
+        3. Create a Service Account and download its JSON credentials file.
+        4. Add the content of the JSON file to your Streamlit secrets under `gcp_service_account`.
+           Example:
+           \`\`\`toml
+           [secrets]
+           gcp_service_account = { type = "service_account", project_id = "...", private_key_id = "...", ... }
+           \`\`\`
+        5. Share your Google Sheet with the service account's email address (found in the JSON file).
+        
+        For demo purposes, sample data is shown above.
+        """)
 
 # ============================================================================
 # FOOTER
