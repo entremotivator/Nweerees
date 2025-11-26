@@ -432,6 +432,11 @@ def initialize_session_state():
         st.session_state.show_structure = False
     if 'gsheet_sync_message' not in st.session_state:
         st.session_state.gsheet_sync_message = ""
+    # <-- CHANGE: Add state for uploaded service account and connection status -->
+    if 'uploaded_service_account' not in st.session_state:
+        st.session_state.uploaded_service_account = None
+    if 'gsheet_connected' not in st.session_state:
+        st.session_state.gsheet_connected = False
     # ---------------------------------------
 
 initialize_session_state()
@@ -570,86 +575,24 @@ def test_webhook_connection(webhook_type: str) -> Dict[str, Any]:
             "error": str(e)
         }
 
-# Function to fetch data from Google Sheets
-# def fetch_google_sheets_data() -> Optional[pd.DataFrame]:
-#     """Fetch data from Google Sheets using gspread."""
-#     try:
-#         # Initialize gspread client if not already done
-#         if st.session_state.gsheet_client is None:
-#             # Using service account for authentication (recommended for production)
-#             # For demo purposes, you might need to make the sheet public or use a simpler method
-#             # For demonstration, let's try to fetch via public URL if credentials aren't set up
-#             try:
-#                 # Attempt with service account if configured
-#                 # scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-#                 # credentials = Credentials.from_service_account_file(GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
-#                 # st.session_state.gsheet_client = gspread.authorize(credentials)
-#                 # sheet = st.session_state.gsheet_client.open_by_key(GOOGLE_SHEETS_ID).worksheet(GOOGLE_SHEETS_SHEET_NAME)
-#                 # data = sheet.get_all_records()
-
-#                 # Fallback to public URL if service account fails or is not set up
-#                 url = GOOGLE_SHEETS_URL.replace('sheet=demo_examples', f'sheet={GOOGLE_SHEETS_SHEET_NAME}')
-#                 response = requests.get(url)
-#                 response.raise_for_status() # Raise an exception for bad status codes
-                
-#                 # Parse the JSON response
-#                 data_str = response.text.split('google.visualization.Query.setResponse(', 1)[1].rsplit(');', 1)[0]
-#                 data_json = json.loads(data_str)
-                
-#                 # Extract data and columns
-#                 rows = data_json.get('rows', [])
-#                 cols = data_json.get('table', {}).get('cols', [])
-                
-#                 column_names = [col.get('label', f'col{i}') for i, col in enumerate(cols)]
-                
-#                 processed_data = []
-#                 for row in rows:
-#                     row_values = {}
-#                     cells = row.get('c', [])
-#                     for i, cell in enumerate(cells):
-#                         if i < len(column_names):
-#                             value = cell.get('v') if cell else None
-#                             # Attempt to parse datetime strings
-#                             if isinstance(value, str) and len(value) > 10 and value[4] == '-' and value[7] == '-' and value[10] == 'T':
-#                                 try:
-#                                     value = datetime.fromisoformat(value.replace('Z', '+00:00'))
-#                                 except ValueError:
-#                                     pass # Keep as string if parsing fails
-#                             row_values[column_names[i]] = value
-#                     processed_data.append(row_values)
-
-#                 df = pd.DataFrame(processed_data)
-
-#             except Exception as e:
-#                 st.warning(f"Could not fetch data from Google Sheets. Error: {str(e)}. Ensure sheet is shared publicly or service account is configured correctly.")
-#                 return None
-#         
-#         # If using gspread, uncomment the following line and comment out the request part
-#         # df = pd.DataFrame(data)
-        
-#         if not df.empty:
-#             st.session_state.last_gsheet_update = datetime.now()
-#             st.session_state.gsheet_sync_message = f"Successfully fetched {len(df)} rows."
-#         else:
-#             st.session_state.gsheet_sync_message = "No data found in Google Sheets."
-            
-#         return df
-    
-#     except Exception as e:
-#         st.warning(f"Could not fetch Google Sheets data: {str(e)}")
-#         st.session_state.gsheet_sync_message = f"Error fetching data: {str(e)}"
-#         return None
-# -----------------------------------
-
 # ============================================================================
 # GOOGLE SHEETS FUNCTIONS
 # ============================================================================
 
 def get_google_sheets_client():
-    """Initialize Google Sheets client with credentials."""
+    """Initialize Google Sheets client with credentials from uploaded JSON or secrets."""
     try:
+        # First, check if credentials are uploaded via file uploader
+        if st.session_state.get('uploaded_service_account'):
+            credentials = Credentials.from_service_account_info(
+                st.session_state.uploaded_service_account,
+                scopes=GOOGLE_SHEETS_SCOPE
+            )
+            client = gspread.authorize(credentials)
+            return client
+        
         # Check if credentials are in Streamlit secrets
-        if 'gcp_service_account' in st.secrets:
+        elif 'gcp_service_account' in st.secrets:
             credentials = Credentials.from_service_account_info(
                 st.secrets["gcp_service_account"],
                 scopes=GOOGLE_SHEETS_SCOPE
@@ -657,10 +600,10 @@ def get_google_sheets_client():
             client = gspread.authorize(credentials)
             return client
         else:
-            # Fallback to public URL if no credentials found (for demo purposes)
+            # No credentials found
             return None
     except Exception as e:
-        st.warning(f"⚠️ Could not initialize Google Sheets client: {str(e)}. Falling back to demo data.")
+        st.error(f"Could not initialize Google Sheets client: {str(e)}")
         return None
 
 def fetch_google_sheets_data() -> Optional[pd.DataFrame]:
@@ -670,7 +613,7 @@ def fetch_google_sheets_data() -> Optional[pd.DataFrame]:
         
         if client is None:
             # Provide demo data if no credentials are set up
-            st.info("📊 Using demo data. Add Google Sheets credentials to Streamlit secrets to load real data.")
+            st.info("Using demo data. Upload a service account JSON file in the sidebar to load real data from Google Sheets.")
             demo_data = {
                 "Number": [1, 2, 3, 4, 5],
                 "Title": [
@@ -821,7 +764,7 @@ import plotly.express as px
 
 st.set_page_config(layout="wide")
 
-st.title("Sales Dashboard 📈")
+st.title("Sales Dashboard")
 
 # Sample Data
 data = {
@@ -863,7 +806,7 @@ st.dataframe(df)
         data = worksheet.get_all_values()
         
         if len(data) < 2:
-            st.warning("⚠️ Google Sheet is empty or has no data rows.")
+            st.warning("Google Sheet is empty or has no data rows.")
             return None
         
         headers = data[0]
@@ -879,13 +822,15 @@ st.dataframe(df)
 
         # Update last sync time
         st.session_state.last_gsheet_update = datetime.now()
-        st.session_state.gsheet_sync_message = f"Successfully fetched {len(df)} rows."
+        st.session_state.gsheet_sync_message = f"Successfully fetched {len(df)} rows from Google Sheets."
+        st.session_state.gsheet_connected = True
         
         return df
     
     except Exception as e:
-        st.error(f"❌ Error fetching Google Sheets data: {str(e)}")
-        st.session_state.gsheet_sync_message = f"Error fetching data: {str(e)}"
+        st.error(f"Error fetching Google Sheets data: {str(e)}")
+        st.session_state.gsheet_sync_message = f"Error: {str(e)}"
+        st.session_state.gsheet_connected = False
         return None
 # -----------------------------------
 
@@ -945,11 +890,71 @@ def create_display_card(title: str, content: str, card_type: str = "code", metad
 
 with st.sidebar:
     st.markdown("---")
-    st.markdown('<div class="sidebar-section"><div class="sidebar-title">🤖 Ultimate AI Generator Hub</div><p style="font-size: 0.9rem; color: #666;">All-in-one AI-powered code & document generation platform</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section"><div class="sidebar-title">Ultimate AI Generator Hub</div><p style="font-size: 0.9rem; color: #666;">All-in-one AI-powered code & document generation platform</p></div>', unsafe_allow_html=True)
+    st.markdown("---")
+    
+    st.markdown('<div class="sidebar-title">Google Sheets Authentication</div>', unsafe_allow_html=True)
+    
+    # Display connection status
+    if st.session_state.get('gsheet_connected', False):
+        st.success("Connected to Google Sheets")
+        if st.button("Disconnect", use_container_width=True, type="secondary"):
+            st.session_state.uploaded_service_account = None
+            st.session_state.gsheet_connected = False
+            st.session_state.gsheet_data = None
+            st.rerun()
+    else:
+        st.info("Upload service account JSON to connect")
+        
+        # File uploader for service account JSON
+        uploaded_file = st.file_uploader(
+            "Upload Service Account JSON",
+            type=['json'],
+            help="Upload your Google Cloud service account JSON file to access Google Sheets",
+            key="service_account_uploader"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # Parse JSON file
+                service_account_info = json.load(uploaded_file)
+                
+                # Validate that it's a service account JSON
+                required_keys = ['type', 'project_id', 'private_key_id', 'private_key', 'client_email']
+                if all(key in service_account_info for key in required_keys):
+                    st.session_state.uploaded_service_account = service_account_info
+                    st.success("Service account loaded successfully")
+                    
+                    # Automatically try to connect
+                    with st.spinner("Connecting to Google Sheets..."):
+                        test_data = fetch_google_sheets_data()
+                        if test_data is not None:
+                            st.session_state.gsheet_data = test_data
+                            st.session_state.gsheet_connected = True
+                            st.success(f"Connected! Loaded {len(test_data)} rows")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Failed to fetch data. Check your sheet ID and permissions.")
+                else:
+                    st.error("Invalid service account JSON file. Missing required fields.")
+            except json.JSONDecodeError:
+                st.error("Invalid JSON file. Please upload a valid service account JSON.")
+            except Exception as e:
+                st.error(f"Error loading service account: {str(e)}")
+    
+    # Show sheet details
+    if st.session_state.get('gsheet_connected', False):
+        with st.expander("Sheet Details", expanded=False):
+            st.text(f"Sheet ID: {GOOGLE_SHEETS_ID[:20]}...")
+            st.text(f"Sheet Name: {GOOGLE_SHEETS_SHEET_NAME}")
+            if st.session_state.last_gsheet_update:
+                st.text(f"Last Sync: {st.session_state.last_gsheet_update.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     st.markdown("---")
     
     # Agent categories section
-    st.markdown('<div class="sidebar-title">📚 Available Generators</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">Available Generators</div>', unsafe_allow_html=True)
     
     for category, agents in AGENT_CATEGORIES.items():
         with st.expander(f"**{category}** ({len(agents)})", expanded=False):
@@ -959,55 +964,57 @@ with st.sidebar:
     st.markdown("---")
     
     # Statistics section
-    st.markdown('<div class="sidebar-title">📊 Live Statistics</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">Live Statistics</div>', unsafe_allow_html=True)
     
     stats = get_statistics()
     
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("📦 Total", stats['total_all'], delta=None)
-        st.metric("🌐 HTML/CSS", stats['html'])
+        st.metric("Total", stats['total_all'], delta=None)
+        st.metric("HTML/CSS", stats['html'])
     with col2:
-        st.metric("📝 Documents", stats['total_documents'])
-        st.metric("🐍 Python", stats['python'])
+        st.metric("Documents", stats['total_documents'])
+        st.metric("Python", stats['python'])
     
     if stats['total_codes'] > 0:
-        st.metric("📏 Avg Code Length", f"{stats['avg_code_length']:,} chars")
-        st.metric("⚡ Avg Response", f"{stats['avg_response_time']:.2f}s")
+        st.metric("Avg Code Length", f"{stats['avg_code_length']:,} chars")
+        st.metric("Avg Response", f"{stats['avg_response_time']:.2f}s")
     
     st.markdown("---")
     
     # Quick actions
-    st.markdown('<div class="sidebar-title">⚡ Quick Actions</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">Quick Actions</div>', unsafe_allow_html=True)
     
-    if st.button("🔄 Refresh All Data", use_container_width=True):
-        st.session_state.gsheet_data = fetch_google_sheets_data() # Refresh GSheet data
+    if st.button("Refresh All Data", use_container_width=True):
+        if st.session_state.get('gsheet_connected', False):
+            with st.spinner("Refreshing..."):
+                st.session_state.gsheet_data = fetch_google_sheets_data()
         st.rerun()
     
-    if st.button("🗑️ Clear All History", use_container_width=True, type="secondary"):
+    if st.button("Clear All History", use_container_width=True, type="secondary"):
         if st.session_state.generated_codes or st.session_state.generated_documents:
             st.session_state.generated_codes = []
             st.session_state.generated_documents = []
             st.session_state.messages = []
             st.session_state.history = []
-            st.success("✅ All history cleared!")
+            st.success("All history cleared")
             time.sleep(1)
             st.rerun()
     
     st.markdown("---")
     
     # Webhook status section
-    st.markdown('<div class="sidebar-title">🔗 System Status</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">System Status</div>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔌 Test Code", use_container_width=True):
+        if st.button("Test Code", use_container_width=True):
             with st.spinner("Testing..."):
                 result = test_webhook_connection("code")
                 st.session_state.webhook_test_results['code'] = result
     
     with col2:
-        if st.button("🔌 Test Docs", use_container_width=True):
+        if st.button("Test Docs", use_container_width=True):
             with st.spinner("Testing..."):
                 result = test_webhook_connection("document")
                 st.session_state.webhook_test_results['document'] = result
@@ -1016,14 +1023,14 @@ with st.sidebar:
     if st.session_state.webhook_test_results:
         for webhook_type, result in st.session_state.webhook_test_results.items():
             if result.get('success'):
-                st.markdown(f'<span class="status-badge status-success">{webhook_type.title()}: ✅ OK</span>', unsafe_allow_html=True)
+                st.markdown(f'<span class="status-badge status-success">{webhook_type.title()}: OK</span>', unsafe_allow_html=True)
             else:
-                st.markdown(f'<span class="status-badge status-error">{webhook_type.title()}: ❌ Failed</span>', unsafe_allow_html=True)
+                st.markdown(f'<span class="status-badge status-error">{webhook_type.title()}: Failed</span>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # Settings section
-    st.markdown('<div class="sidebar-title">⚙️ Settings</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">Settings</div>', unsafe_allow_html=True)
     
     show_raw_response = st.checkbox("Show Raw API Responses", value=False)
     auto_download = st.checkbox("Auto-Download Generated Code", value=False)
@@ -1032,21 +1039,23 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Google Sheets section
-    st.markdown('<div class="sidebar-title">📥 Google Sheets Sync</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">Google Sheets Sync</div>', unsafe_allow_html=True)
     
-    if st.button("🔄 Sync to Sheets", use_container_width=True):
-        with st.spinner("Syncing..."):
-            st.session_state.gsheet_data = fetch_google_sheets_data()
-            if st.session_state.gsheet_sync_message:
-                st.info(st.session_state.gsheet_sync_message) # Display sync status
-            if st.session_state.gsheet_data is not None:
-                st.success(f"✅ Synced {len(st.session_state.gsheet_data)} records!")
-            else:
-                st.info("ℹ️ No data to sync yet.")
-    
-    if st.session_state.last_gsheet_update:
-        st.caption(f"🕐 Last sync: {st.session_state.last_gsheet_update.strftime('%H:%M:%S')}")
+    if st.session_state.get('gsheet_connected', False):
+        if st.button("Sync to Sheets", use_container_width=True):
+            with st.spinner("Syncing..."):
+                st.session_state.gsheet_data = fetch_google_sheets_data()
+                if st.session_state.gsheet_sync_message:
+                    st.info(st.session_state.gsheet_sync_message)
+                if st.session_state.gsheet_data is not None:
+                    st.success(f"Synced {len(st.session_state.gsheet_data)} records")
+                else:
+                    st.warning("No data synced")
+        
+        if st.session_state.last_gsheet_update:
+            st.caption(f"Last sync: {st.session_state.last_gsheet_update.strftime('%H:%M:%S')}")
+    else:
+        st.info("Upload service account JSON above to enable sync")
 
 # ============================================================================
 # MAIN CONTENT
