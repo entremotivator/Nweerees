@@ -2059,13 +2059,15 @@ with tab6:
     with col1:
         st.markdown("### 🔄 Data Synchronization")
     
+    # CHANGE: Ensure data loads immediately on upload and displays correctly
     with col2:
         if st.button("🔄 Refresh Data", use_container_width=True, key="refresh_gsheet"):
             with st.spinner("Fetching data from Google Sheets..."):
                 df = fetch_google_sheets_data()
                 if df is not None:
                     st.session_state.gsheet_data = df
-                    st.success(f"✅ Loaded {len(df)} records!")
+                    st.session_state.last_gsheet_update = datetime.now()
+                    st.success(f"✅ Synced {len(df)} records")
                     st.rerun()
                 else:
                     st.error("❌ Failed to load data")
@@ -2077,19 +2079,27 @@ with tab6:
             # to the Google Sheet using gspread.
             # For now, it's a placeholder.
     
-    # Load data if not already loaded
-    if 'gsheet_data' not in st.session_state or st.session_state.gsheet_data is None:
-        with st.spinner("Loading Google Sheets data..."):
+    # CHANGE: Auto-load data on first visit and show sync status
+    if st.session_state.gsheet_data is None:
+        with st.spinner("Loading data from Google Sheets..."):
             df = fetch_google_sheets_data()
             if df is not None:
                 st.session_state.gsheet_data = df
+                st.session_state.last_gsheet_update = datetime.now()
+
+    # Show sync status
+    if hasattr(st.session_state, 'last_gsheet_update') and st.session_state.last_gsheet_update:
+        sync_time = st.session_state.last_gsheet_update.strftime('%H:%M:%S')
+        if st.session_state.gsheet_data is not None:
+            st.success(f"✅ Last sync: {sync_time} | Synced {len(st.session_state.gsheet_data)} records")
+
+    st.markdown("---")
     
-    # Display data
+    # CHANGE: Display data with better error handling and visual feedback
     if st.session_state.gsheet_data is not None and len(st.session_state.gsheet_data) > 0:
-        df = st.session_state.gsheet_data
+        df = st.session_state.gsheet_data.copy()
         
-        st.markdown("---")
-        
+        # Metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("📊 Total Records", len(df))
@@ -2099,82 +2109,202 @@ with tab6:
             if 'Category' in df.columns:
                 unique_categories = df['Category'].nunique()
                 st.metric("🏷️ Categories", unique_categories)
+            else:
+                st.metric("🏷️ Categories", "N/A")
         with col4:
             if 'PDF_Enabled' in df.columns:
-                pdf_count = (df['PDF_Enabled'] == True).sum() # Ensure boolean comparison
-                st.metric("📄 PDF Enabled", pdf_count)
+                # Handle different data types for PDF_Enabled
+                try:
+                    if df['PDF_Enabled'].dtype == bool:
+                        pdf_count = df['PDF_Enabled'].sum()
+                    else:
+                        pdf_count = (df['PDF_Enabled'].astype(str).str.upper() == 'TRUE').sum()
+                    st.metric("📄 PDF Enabled", pdf_count)
+                except:
+                    st.metric("📄 PDF Enabled", "N/A")
+            else:
+                st.metric("📄 PDF Enabled", "N/A")
         
         st.markdown("---")
         
+        # CHANGE: Enhanced filters and search
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            search_term = st.text_input("🔍 Search in Title or Description", key="gsheet_search")
+            search_term = st.text_input("🔍 Search in Title, Description, or Code", placeholder="Type to search...", key="gsheet_search")
         
         with col2:
             if 'Category' in df.columns:
-                categories = ['All'] + sorted(df['Category'].unique().tolist())
+                categories = ['All'] + sorted([str(cat) for cat in df['Category'].unique() if pd.notna(cat)])
                 selected_category = st.selectbox("🏷️ Filter by Category", categories, key="gsheet_category")
+            else:
+                selected_category = 'All'
         
         # Apply filters
         filtered_df = df.copy()
         
         if search_term:
-            mask = False
+            mask = pd.Series([False] * len(filtered_df))
             if 'Title' in filtered_df.columns:
                 mask |= filtered_df['Title'].astype(str).str.contains(search_term, case=False, na=False)
             if 'Description' in filtered_df.columns:
                 mask |= filtered_df['Description'].astype(str).str.contains(search_term, case=False, na=False)
+            if 'Code' in filtered_df.columns:
+                mask |= filtered_df['Code'].astype(str).str.contains(search_term, case=False, na=False)
             filtered_df = filtered_df[mask]
         
         if 'Category' in df.columns and selected_category != 'All':
-            filtered_df = filtered_df[filtered_df['Category'] == selected_category]
+            filtered_df = filtered_df[filtered_df['Category'].astype(str) == selected_category]
         
         st.markdown(f"**Showing {len(filtered_df)} of {len(df)} records**")
         
-        if st.checkbox("📋 Show as Cards", value=True, key="show_cards"):
-            for idx, row in filtered_df.iterrows():
-                with st.expander(f"#{row.get('Number', idx+1)} - {row.get('Title', 'Untitled')}"):
-                    col1, col2 = st.columns([2, 1])
-                    
-                    with col1:
-                        st.markdown(f"**Category:** {row.get('Category', 'N/A')}")
-                        st.markdown(f"**Description:** {row.get('Description', 'No description')}")
-                        st.markdown(f"**PDF Enabled:** {row.get('PDF_Enabled', 'N/A')}")
-                    
-                    with col2:
-                        if 'Code' in row and pd.notna(row['Code']):
-                            if st.button(f"👁️ View Code", key=f"view_code_{idx}"):
-                                st.code(row['Code'], language='html')
+        # CHANGE: Display tabs for different views
+        view_tab1, view_tab2, view_tab3 = st.tabs(["📋 Card View", "📊 Table View", "📈 Analytics"])
+        
+        with view_tab1:
+            if len(filtered_df) == 0:
+                st.warning("No records match your search criteria")
+            else:
+                for idx, row in filtered_df.iterrows():
+                    with st.expander(f"#{row.get('Number', idx+1)} - {row.get('Title', 'Untitled')}", expanded=False):
+                        col1, col2 = st.columns([2, 1])
+                        
+                        with col1:
+                            st.markdown(f"**📂 Category:** `{row.get('Category', 'N/A')}`")
+                            st.markdown(f"**📝 Description:** {row.get('Description', 'No description')}")
                             
-                            if st.button(f"📥 Download", key=f"download_{idx}"):
+                            if 'PDF_Enabled' in row:
+                                pdf_enabled = str(row.get('PDF_Enabled', '')).upper() == 'TRUE'
+                                pdf_icon = "✅" if pdf_enabled else "❌"
+                                st.markdown(f"**📄 PDF Enabled:** {pdf_icon} {pdf_enabled}")
+                        
+                        with col2:
+                            if 'Code' in row and pd.notna(row['Code']) and str(row['Code']).strip():
+                                # Determine language based on code content
+                                code_content = str(row['Code'])
+                                if 'import streamlit' in code_content.lower():
+                                    lang = 'python'
+                                elif '<!DOCTYPE html>' in code_content or '<html' in code_content:
+                                    lang = 'html'
+                                else:
+                                    lang = 'text'
+                                
+                                if st.button(f"👁️ Preview Code", key=f"view_code_{idx}", use_container_width=True):
+                                    st.code(code_content, language=lang)
+                                
+                                # Download button
+                                file_ext = 'py' if lang == 'python' else 'html'
+                                file_name = f"{str(row.get('Title', 'code')).replace(' ', '_')}.{file_ext}"
+                                
                                 st.download_button(
-                                    label="⬇️ Download HTML",
-                                    data=row['Code'],
-                                    file_name=f"{row.get('Title', 'code').replace(' ', '_')}.html",
-                                    mime="text/html",
-                                    key=f"dl_btn_{idx}"
+                                    label="📥 Download",
+                                    data=code_content,
+                                    file_name=file_name,
+                                    mime=f"text/{file_ext}",
+                                    key=f"download_{idx}",
+                                    use_container_width=True
                                 )
-        else:
-            st.dataframe(
-                filtered_df,
-                use_container_width=True,
-                height=500,
-                hide_index=True
-            )
+                            else:
+                                st.info("No code available")
+        
+        with view_tab2:
+            # CHANGE: Enhanced table view with column selection
+            if len(filtered_df) > 0:
+                available_columns = filtered_df.columns.tolist()
+                selected_columns = st.multiselect(
+                    "Select columns to display",
+                    available_columns,
+                    default=available_columns[:6] if len(available_columns) > 6 else available_columns,
+                    key="table_columns"
+                )
+                
+                if selected_columns:
+                    display_df = filtered_df[selected_columns].copy()
+                    
+                    # Truncate long text for better display
+                    for col in display_df.columns:
+                        if display_df[col].dtype == 'object':
+                            display_df[col] = display_df[col].astype(str).apply(
+                                lambda x: x[:100] + '...' if len(x) > 100 else x
+                            )
+                    
+                    st.dataframe(
+                        display_df,
+                        use_container_width=True,
+                        height=500,
+                        hide_index=True
+                    )
+                else:
+                    st.warning("Please select at least one column to display")
+            else:
+                st.warning("No records to display")
+        
+        with view_tab3:
+            # CHANGE: Enhanced analytics with multiple charts
+            if len(filtered_df) > 0 and 'Category' in filtered_df.columns:
+                st.subheader("📊 Category Distribution")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Pie chart
+                    category_counts = filtered_df['Category'].value_counts()
+                    fig_pie = px.pie(
+                        values=category_counts.values,
+                        names=category_counts.index,
+                        title="Records by Category",
+                        hole=0.4,
+                        color_discrete_sequence=px.colors.qualitative.Set3
+                    )
+                    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                
+                with col2:
+                    # Bar chart
+                    fig_bar = px.bar(
+                        x=category_counts.index,
+                        y=category_counts.values,
+                        labels={'x': 'Category', 'y': 'Count'},
+                        title="Category Counts",
+                        color=category_counts.values,
+                        color_continuous_scale='Viridis'
+                    )
+                    fig_bar.update_layout(showlegend=False)
+                    st.plotly_chart(fig_bar, use_container_width=True)
+                
+                # Additional metrics
+                st.subheader("📈 Additional Metrics")
+                metric_col1, metric_col2, metric_col3 = st.columns(3)
+                
+                with metric_col1:
+                    if 'Code' in filtered_df.columns:
+                        avg_code_length = filtered_df['Code'].astype(str).str.len().mean()
+                        st.metric("📏 Avg Code Length", f"{int(avg_code_length)} chars")
+                
+                with metric_col2:
+                    if 'Description' in filtered_df.columns:
+                        avg_desc_length = filtered_df['Description'].astype(str).str.len().mean()
+                        st.metric("📝 Avg Description", f"{int(avg_desc_length)} chars")
+                
+                with metric_col3:
+                    most_common_category = category_counts.index[0] if len(category_counts) > 0 else "N/A"
+                    st.metric("🏆 Top Category", most_common_category)
+            else:
+                st.info("Not enough data for analytics. Add more records with categories.")
         
         st.markdown("---")
         
-        st.markdown("#### 📥 Export Sheet Data")
+        # CHANGE: Enhanced export options
+        st.markdown("### 📥 Export Data")
         
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             csv_data = filtered_df.to_csv(index=False)
             st.download_button(
-                label="📄 Download CSV",
+                label="📄 CSV",
                 data=csv_data,
-                file_name=f"google_sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                file_name=f"sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
@@ -2182,23 +2312,25 @@ with tab6:
         with col2:
             json_data = filtered_df.to_json(orient='records', indent=2)
             st.download_button(
-                label="📋 Download JSON",
+                label="📋 JSON",
                 data=json_data,
-                file_name=f"google_sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                file_name=f"sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                 mime="application/json",
                 use_container_width=True
             )
         
         with col3:
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                filtered_df.to_excel(writer, index=False, sheet_name='Data')
-            excel_data = excel_buffer.getvalue()
+            # Excel export using openpyxl
+            from io import BytesIO
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                filtered_df.to_excel(writer, index=False, sheet_name='Export')
+            excel_data = output.getvalue()
             
             st.download_button(
-                label="📊 Download Excel",
+                label="📊 Excel",
                 data=excel_data,
-                file_name=f"google_sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                file_name=f"sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
@@ -2206,57 +2338,23 @@ with tab6:
         with col4:
             html_data = filtered_df.to_html(index=False)
             st.download_button(
-                label="🌐 Download HTML",
+                label="🌐 HTML",
                 data=html_data,
-                file_name=f"google_sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                file_name=f"sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                 mime="text/html",
                 use_container_width=True
             )
-        
-        if 'Category' in df.columns:
-            st.markdown("---")
-            st.markdown("#### 📊 Category Distribution")
-            
-            category_counts = df['Category'].value_counts()
-            
-            fig = go.Figure(data=[
-                go.Pie(
-                    labels=category_counts.index,
-                    values=category_counts.values,
-                    hole=0.4,
-                    marker=dict(colors=px.colors.qualitative.Set3)
-                )
-            ])
-            
-            fig.update_layout(
-                height=400,
-                showlegend=True,
-                title_text="Templates by Category"
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-    
+
     else:
-        st.warning("⚠️ No data loaded from Google Sheets. Click 'Refresh Data' to load or configure your credentials.")
+        st.warning("⚠️ No data available. Click 'Refresh Data' to load from Google Sheets or upload a service account JSON file in the sidebar.")
         
-        st.markdown("---")
-        st.markdown("### 📚 Setup Instructions")
-        st.markdown("""
-        To connect to your Google Sheet:
-        
-        1. Create a Google Cloud Project
-        2. Enable Google Sheets API and Google Drive API
-        3. Create a Service Account and download its JSON credentials file.
-        4. Add the content of the JSON file to your Streamlit secrets under `gcp_service_account`.
-           Example:
-           \`\`\`toml
-           [secrets]
-           gcp_service_account = { type = "service_account", project_id = "...", private_key_id = "...", ... }
-           \`\`\`
-        5. Share your Google Sheet with the service account's email address (found in the JSON file).
-        
-        For demo purposes, sample data is shown above.
-        """)
+        if st.button("🔄 Try Loading Now", use_container_width=True, type="primary"):
+            with st.spinner("Loading data..."):
+                df = fetch_google_sheets_data()
+                if df is not None:
+                    st.session_state.gsheet_data = df
+                    st.session_state.last_gsheet_update = datetime.now()
+                    st.rerun()
 
 # ============================================================================
 # FOOTER
