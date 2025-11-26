@@ -20,33 +20,46 @@ except ImportError:
     REPORTLAB_AVAILABLE = False
     
 # ==========================================
-# PAGE CONFIG (from file 1)
+# PAGE CONFIG (Enhanced)
 # ==========================================
 st.set_page_config(
-    page_title="Unified Streamlit Application",
+    page_title="Ultimate Unified Streamlit Platform",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ==========================================
-# CUSTOM CSS (from file 1)
+# CUSTOM CSS (Enhanced)
 # ==========================================
 st.markdown("""
 <style>
+    /* Main Header - More vibrant */
     .main-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 10px;
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); /* Deep Blue Gradient */
+        padding: 2.5rem;
+        border-radius: 15px;
         color: white;
         text-align: center;
-        margin-bottom: 2rem;
+        margin-bottom: 2.5rem;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.15);
     }
+    .main-header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+    /* Buttons - More prominent */
     .stButton>button {
         width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        font-weight: 600;
+        border-radius: 8px;
+        height: 3.5em;
+        font-weight: 700;
+        transition: all 0.3s;
     }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    /* Chat Messages */
     .chat-message {
         padding: 1rem;
         border-radius: 10px;
@@ -54,20 +67,22 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .user-message {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #4CAF50 0%, #8BC34A 100%); /* Green Gradient */
         color: white;
         margin-left: 20%;
     }
     .assistant-message {
-        background: #f0f2f6;
+        background: #e3f2fd; /* Light Blue */
         color: #1f1f1f;
         margin-right: 20%;
+        border-left: 5px solid #2196F3;
     }
     .system-message {
-        background: #e8f4f8;
-        color: #0066cc;
-        border-left: 4px solid #0066cc;
+        background: #fff3e0; /* Light Orange */
+        color: #ff9800;
+        border-left: 4px solid #ff9800;
     }
+    /* Webhook Card */
     .webhook-card {
         background: white;
         padding: 1.5rem;
@@ -77,9 +92,10 @@ st.markdown("""
         transition: all 0.3s;
     }
     .webhook-card:hover {
-        border-color: #667eea;
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        border-color: #2a5298;
+        box-shadow: 0 4px 12px rgba(42, 82, 152, 0.2);
     }
+    /* Metrics */
     .metric-card {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         padding: 1rem;
@@ -100,7 +116,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# SESSION STATE INITIALIZATION (from file 1)
+# SESSION STATE INITIALIZATION
 # ==========================================
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -130,9 +146,11 @@ if "show_code_panel" not in st.session_state:
     st.session_state.show_code_panel = False
 if "webhook_simple_history" not in st.session_state:
     st.session_state.webhook_simple_history = []
+if "code_display_mode" not in st.session_state:
+    st.session_state.code_display_mode = "Prettify" # New state for code viewer
 
 # ==========================================
-# WEBHOOK CONFIGURATIONS (from file 1)
+# WEBHOOK CONFIGURATIONS (Expanded)
 # ==========================================
 WEBHOOK_BASE = "https://agentonline-u29564.vm.elestio.app/webhook"
 WEBHOOKS = {
@@ -140,43 +158,85 @@ WEBHOOKS = {
         "url": f"{WEBHOOK_BASE}/newsletter-trigger",
         "icon": "📧",
         "description": "Create engaging newsletters with AI assistance",
-        "prompt_template": "Create a professional newsletter about: {topic}",
-        "examples": ["Product launch announcement", "Monthly company update", "Industry insights roundup"]
+        "prompt_template": "Create a professional newsletter about: {topic} for a target audience of {audience}. The tone should be {tone}.",
+        "fields": ["topic", "audience", "tone"],
+        "examples": [
+            {"topic": "Product launch announcement", "audience": "Tech enthusiasts", "tone": "Excited and informative"},
+            {"topic": "Monthly company update", "audience": "Investors", "tone": "Formal and analytical"},
+            {"topic": "Industry insights roundup", "audience": "Small business owners", "tone": "Practical and encouraging"}
+        ]
     },
     "Landing Page": {
         "url": f"{WEBHOOK_BASE}/landingpage-trigger",
         "icon": "🌐",
         "description": "Generate high-converting landing pages",
-        "prompt_template": "Design a landing page for: {topic}",
-        "examples": ["SaaS product launch", "Event registration", "Lead magnet download"]
+        "prompt_template": "Design a landing page for: {product} with a focus on {benefit}. The call-to-action is {cta}.",
+        "fields": ["product", "benefit", "cta"],
+        "examples": [
+            {"product": "SaaS product launch", "benefit": "Saving 50% on cloud costs", "cta": "Start Free Trial"},
+            {"product": "Event registration", "benefit": "Networking with industry leaders", "cta": "Register Now"},
+            {"product": "Lead magnet download", "benefit": "Mastering Streamlit in 1 hour", "cta": "Download Ebook"}
+        ]
     },
     "Business Letter": {
         "url": f"{WEBHOOK_BASE}/business-letter-trigger",
         "icon": "📝",
         "description": "Craft professional business correspondence",
-        "prompt_template": "Write a business letter regarding: {topic}",
-        "examples": ["Partnership proposal", "Client introduction", "Formal complaint"]
+        "prompt_template": "Write a business letter regarding: {subject} to {recipient_type}. The desired outcome is {outcome}.",
+        "fields": ["subject", "recipient_type", "outcome"],
+        "examples": [
+            {"subject": "Partnership proposal", "recipient_type": "CEO of a logistics company", "outcome": "A follow-up meeting"},
+            {"subject": "Client introduction", "recipient_type": "New potential client", "outcome": "A positive first impression"},
+            {"subject": "Formal complaint", "recipient_type": "Supplier management", "outcome": "A full refund and apology"}
+        ]
     },
     "Email Sequence": {
         "url": f"{WEBHOOK_BASE}/email-sequence-trigger",
         "icon": "📬",
         "description": "Build automated email sequences",
-        "prompt_template": "Create an email sequence for: {topic}",
-        "examples": ["Onboarding sequence", "Sales nurture campaign", "Re-engagement series"]
+        "prompt_template": "Create an email sequence for: {purpose} over {duration} days. The main goal is {goal}.",
+        "fields": ["purpose", "duration", "goal"],
+        "examples": [
+            {"purpose": "Onboarding sequence", "duration": "7", "goal": "First feature usage"},
+            {"purpose": "Sales nurture campaign", "duration": "14", "goal": "Book a demo"},
+            {"purpose": "Re-engagement series", "duration": "30", "goal": "Active subscription renewal"}
+        ]
     },
     "Invoice": {
         "url": f"{WEBHOOK_BASE}/invoice-trigger",
         "icon": "💰",
         "description": "Generate professional invoices",
-        "prompt_template": "Create an invoice for: {topic}",
-        "examples": ["Consulting services", "Product sale", "Subscription billing"]
+        "prompt_template": "Create an invoice for: {client} for {service} totaling {amount} USD.",
+        "fields": ["client", "service", "amount"],
+        "examples": [
+            {"client": "Acme Corp", "service": "Consulting services", "amount": "5000"},
+            {"client": "Jane Doe", "service": "Product sale (Pro License)", "amount": "999"},
+            {"client": "Global Subscriptions", "service": "Subscription billing (Q4)", "amount": "12000"}
+        ]
     },
     "Business Contract": {
         "url": f"{WEBHOOK_BASE}/business-contract-trigger",
         "icon": "📄",
         "description": "Draft legal business contracts",
-        "prompt_template": "Draft a contract for: {topic}",
-        "examples": ["Service agreement", "NDA", "Partnership agreement"]
+        "prompt_template": "Draft a contract for: {type} between {party_a} and {party_b} with a term of {term}.",
+        "fields": ["type", "party_a", "party_b", "term"],
+        "examples": [
+            {"type": "Service agreement", "party_a": "My Company", "party_b": "Client X", "term": "12 months"},
+            {"type": "NDA", "party_a": "Innovator Y", "party_b": "Investor Z", "term": "5 years"},
+            {"type": "Partnership agreement", "party_a": "Alpha Partner", "party_b": "Beta Partner", "term": "Indefinite"}
+        ]
+    },
+    "Code Generator": {
+        "url": f"{WEBHOOK_BASE}/code-generator-trigger",
+        "icon": "💻",
+        "description": "Generate code snippets in any language",
+        "prompt_template": "Generate a {language} function to {task} and include a brief explanation.",
+        "fields": ["language", "task"],
+        "examples": [
+            {"language": "Python", "task": "read a CSV file into a Pandas DataFrame"},
+            {"language": "JavaScript", "task": "validate an email address using a regular expression"},
+            {"language": "SQL", "task": "select all users who have placed more than 5 orders"}
+        ]
     }
 }
 
@@ -186,7 +246,7 @@ WEBHOOKS = {
 
 @st.cache_data(show_spinner="Loading data from Google Sheet...")
 def load_data(url):
-    """Load data from Google Sheets CSV export (from file 1 & 2)"""
+    """Load data from Google Sheets CSV export"""
     try:
         df = pd.read_csv(url)
         required_columns = ['Number', 'Code']
@@ -216,7 +276,7 @@ def load_data(url):
         return pd.DataFrame(columns=['Number', 'Code', 'Title', 'Category', 'Description'])
 
 def send_webhook(webhook_url, payload):
-    """Send webhook request and return response (from file 1)"""
+    """Send webhook request and return response"""
     try:
         resp = requests.post(webhook_url, json=payload, timeout=30)
         return {
@@ -234,7 +294,7 @@ def send_webhook(webhook_url, payload):
         }
 
 def add_to_chat_history(role, content, metadata=None):
-    """Add message to chat history (from file 1)"""
+    """Add message to chat history"""
     st.session_state.chat_history.append({
         "role": role,
         "content": content,
@@ -243,7 +303,7 @@ def add_to_chat_history(role, content, metadata=None):
     })
 
 def clean_html_for_download(html_content):
-    """Clean HTML content for download - embed CSS properly without showing raw code (from file 1 & 2)"""
+    """Clean HTML content for download - embed CSS properly without showing raw code"""
     # Extract CSS from style tags
     css_pattern = r'<style[^>]*>(.*?)</style>'
     css_matches = re.findall(css_pattern, html_content, re.DOTALL)
@@ -267,14 +327,42 @@ def clean_html_for_download(html_content):
     
     return html_content
 
+def prettify_html(html_content):
+    """Simple attempt to prettify HTML/CSS content for better readability."""
+    # This is a very basic implementation. For real prettifying, a library like BeautifulSoup or jsbeautifier is needed.
+    # We'll use simple regex to add line breaks after common tags.
+    html_content = re.sub(r'(?<=>)(<[^/])', r'\n\1', html_content) # Add newline before opening tags
+    html_content = re.sub(r'(?<=/?>)(<)', r'\n\1', html_content) # Add newline after closing tags
+    
+    # Simple indentation (not perfect)
+    lines = html_content.split('\n')
+    indent_level = 0
+    prettified_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Decrease indent for closing tags
+        if line.startswith('</') or line.startswith('}'):
+            indent_level = max(0, indent_level - 1)
+            
+        prettified_lines.append('    ' * indent_level + line)
+        
+        # Increase indent for opening tags
+        if not line.startswith('</') and not line.startswith('}') and ('<' in line and '>' in line) and not line.endswith('/>'):
+            indent_level += 1
+            
+    return '\n'.join(prettified_lines)
+
 def generate_pdf_from_html(html_content, title="Document"):
-    """Generate PDF from HTML with improved formatting (from file 2)"""
+    """Generate PDF from HTML with improved formatting"""
     if not REPORTLAB_AVAILABLE:
-        st.error("PDF generation requires the 'reportlab' package. Please install it.")
         return None
         
     class EnhancedHTMLParser(HTMLParser):
-        # ... (Parser implementation from file 2) ...
+        # ... (Parser implementation from previous version) ...
         def __init__(self):
             super().__init__()
             self.content = []
@@ -481,7 +569,7 @@ def generate_pdf_from_html(html_content, title="Document"):
 with st.sidebar:
     st.markdown("## 🎯 Navigation")
     
-    # Combined navigation (from file 1)
+    # Combined navigation
     app_mode = st.radio(
         "Select Mode:",
         ["🎨 Code Viewer", "🤖 AI Webhook Chat", "📤 Simple Webhook Sender"],
@@ -490,7 +578,7 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # --- Quick Actions (from file 1) ---
+    # --- Quick Actions ---
     st.markdown("## ⚡ Quick Actions")
     
     if st.button("🗑️ Clear Chat History", use_container_width=True):
@@ -511,7 +599,7 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # --- Statistics (from file 1) ---
+    # --- Statistics ---
     st.markdown("## 📈 Statistics")
     col1, col2 = st.columns(2)
     with col1:
@@ -532,13 +620,13 @@ with st.sidebar:
 
 if app_mode == "🎨 Code Viewer":
     # ==========================================
-    # CODE VIEWER MODE (from file 1 & 2)
+    # CODE VIEWER MODE (Enhanced)
     # ==========================================
     
     st.markdown("""
     <div class="main-header">
-        <h1>🚀 Professional Code Viewer</h1>
-        <p>Load, preview, and download HTML/CSS code from Google Sheets with enhanced features</p>
+        <h1>🚀 Advanced Code Viewer & Editor</h1>
+        <p>Load, preview, edit, and download code from Google Sheets with enhanced features</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -569,7 +657,7 @@ if app_mode == "🎨 Code Viewer":
     if not df.empty:
         # Display Controls
         st.markdown("### 🎛️ Display Controls")
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             st.session_state.show_live_preview = st.toggle("🔴 Live Preview", value=st.session_state.show_live_preview)
@@ -579,6 +667,8 @@ if app_mode == "🎨 Code Viewer":
             st.session_state.edit_mode = st.toggle("✏️ Edit Mode", value=st.session_state.edit_mode)
         with col4:
             st.session_state.halt_edit = st.toggle("🔒 Lock Edit", value=st.session_state.halt_edit)
+        with col5:
+            st.session_state.code_display_mode = st.radio("Code View:", ["Prettify", "Raw"], index=0 if st.session_state.code_display_mode == "Prettify" else 1, horizontal=True, label_visibility="collapsed")
         
         if st.session_state.halt_edit and st.session_state.edit_mode:
             st.warning("⚠️ Edit mode disabled due to edit lock")
@@ -626,6 +716,11 @@ if app_mode == "🎨 Code Viewer":
             
             st.markdown("---")
             
+            # Code Prettify/Raw Logic
+            code_to_display = current_code
+            if st.session_state.code_display_mode == "Prettify":
+                code_to_display = prettify_html(current_code)
+            
             # Main content display
             if st.session_state.show_live_preview and st.session_state.show_code_panel:
                 col1, col2 = st.columns([1, 1])
@@ -650,7 +745,7 @@ if app_mode == "🎨 Code Viewer":
                             st.session_state.current_code = edited_code
                             st.rerun()
                     else:
-                        st.code(current_code, language="html", line_numbers=True)
+                        st.code(code_to_display, language="html", line_numbers=True)
             
             elif st.session_state.show_live_preview:
                 st.markdown("### 🔴 Live Preview")
@@ -672,7 +767,7 @@ if app_mode == "🎨 Code Viewer":
                         st.session_state.current_code = edited_code
                         st.rerun()
                 else:
-                    st.code(current_code, language="html", line_numbers=True)
+                    st.code(code_to_display, language="html", line_numbers=True)
             else:
                 st.info("📌 Enable Live Preview or Code Panel to view content")
             
@@ -680,7 +775,7 @@ if app_mode == "🎨 Code Viewer":
             st.markdown("---")
             st.markdown("### 📥 Download Options")
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             if current_code and current_code.strip():
                 clean_html = clean_html_for_download(current_code)
@@ -697,7 +792,7 @@ if app_mode == "🎨 Code Viewer":
                     )
                 
                 with col2:
-                    # PDF Download (from file 2)
+                    # PDF Download
                     pdf_data = generate_pdf_from_html(current_code, selected_row.get('Title', 'Document'))
                     if pdf_data:
                         st.download_button(
@@ -712,6 +807,11 @@ if app_mode == "🎨 Code Viewer":
                         st.button("📄 Download PDF", use_container_width=True, disabled=True, help="ReportLab not installed or PDF generation failed.")
 
                 with col3:
+                    # Copy to Clipboard (using Streamlit's text_input trick)
+                    st.text_input("Copy Code:", code_to_display, label_visibility="collapsed", key="copy_code_input")
+                    st.button("📋 Copy Code", use_container_width=True, help="Copy the displayed code to clipboard.")
+                
+                with col4:
                     # Reset Code
                     if st.session_state.edit_mode and not st.session_state.halt_edit:
                         if st.button("🔄 Reset Code", use_container_width=True):
@@ -733,22 +833,23 @@ if app_mode == "🎨 Code Viewer":
 
 elif app_mode == "🤖 AI Webhook Chat":
     # ==========================================
-    # AI WEBHOOK CHAT MODE (from file 1)
+    # AI WEBHOOK CHAT MODE (Enhanced)
     # ==========================================
     
     st.markdown("""
     <div class="main-header">
-        <h1>🤖 AI Webhook Chat System</h1>
-        <p>Intelligent conversation interface for webhook-based AI content generation</p>
+        <h1>🤖 Advanced AI Webhook Chat System</h1>
+        <p>Intelligent conversation interface for webhook-based AI content generation with advanced prompting</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Webhook Selection Section (moved from sidebar in file 1 to main content for this mode)
+    # Webhook Selection Section
     st.markdown("## 🔗 Webhook Configuration")
     
+    webhook_keys = list(WEBHOOKS.keys())
     webhook_choice = st.selectbox(
         "Select Webhook Type:",
-        list(WEBHOOKS.keys()),
+        webhook_keys,
         key="webhook_selector_chat"
     )
     
@@ -773,40 +874,39 @@ elif app_mode == "🤖 AI Webhook Chat":
     
     st.markdown("---")
     
-    # Quick prompt templates
-    st.markdown("### 💡 Quick Start Templates")
+    # Advanced Prompting Section
+    st.markdown("### 💡 Advanced Prompting & Templates")
+    
+    # Dynamic Form for Prompt Fields
+    prompt_fields = webhook_info.get("fields", ["topic"])
+    field_values = {}
+    
+    st.markdown(f"**Template:** `{webhook_info['prompt_template']}`")
+    
+    col_count = min(len(prompt_fields), 3)
+    cols = st.columns(col_count)
+    
+    for i, field in enumerate(prompt_fields):
+        with cols[i % col_count]:
+            field_values[field] = st.text_input(f"Enter value for **{field}**:", key=f"prompt_field_{field}")
+
+    # Template Buttons
+    st.markdown("#### Quick Examples")
     template_cols = st.columns(3)
     
     for idx, example in enumerate(webhook_info['examples']):
         with template_cols[idx % 3]:
-            if st.button(f"📝 {example}", key=f"template_btn_{idx}", use_container_width=True):
-                # Send the template prompt as a user message and trigger the webhook
-                prompt = webhook_info['prompt_template'].format(topic=example)
-                
-                # 1. Add user message to chat
-                add_to_chat_history("user", prompt)
-                
-                # 2. Send webhook
-                payload = {
-                    "title": f"{webhook_choice} - {example}",
-                    "type": "text",
-                    "text": prompt,
-                    "category": webhook_choice,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                
-                response_data = send_webhook(webhook_url, payload)
-                st.session_state.webhook_history.append(response_data)
-                
-                # 3. Add system/assistant response to chat
-                status = "success" if response_data["success"] else "error"
-                system_message = f"Webhook sent to `{webhook_url}`. Status Code: **{response_data['status_code']}**."
-                add_to_chat_history("system", system_message, {"status": status})
-                
-                assistant_response = f"**Webhook Response:**\n\n```json\n{response_data['response'][:500]}...\n```"
-                add_to_chat_history("assistant", assistant_response)
-                
-                st.rerun()
+            if st.button(f"📝 {list(example.values())[0]}...", key=f"template_btn_{idx}", use_container_width=True):
+                # Set the text inputs to the example values
+                for field, value in example.items():
+                    st.session_state[f"prompt_field_{field}"] = value
+                st.rerun() # Rerun to update text inputs
+    
+    # Generate Full Prompt
+    try:
+        full_prompt = webhook_info['prompt_template'].format(**field_values)
+    except KeyError:
+        full_prompt = "Error: Missing values for all required fields in the template."
     
     st.markdown("---")
     
@@ -857,7 +957,8 @@ elif app_mode == "🤖 AI Webhook Chat":
     
     with input_col1:
         user_input = st.text_area(
-            "Your message:",
+            "Your message (or use the generated prompt above):",
+            value=full_prompt,
             height=150,
             placeholder=f"Enter your prompt for the {webhook_choice} webhook...",
             label_visibility="collapsed",
@@ -904,13 +1005,13 @@ elif app_mode == "🤖 AI Webhook Chat":
 
 elif app_mode == "📤 Simple Webhook Sender":
     # ==========================================
-    # SIMPLE WEBHOOK SENDER MODE (from file 2)
+    # SIMPLE WEBHOOK SENDER MODE
     # ==========================================
     
     st.markdown("""
     <div class="main-header">
         <h1>📤 Simple Webhook Text Sender</h1>
-        <p>A straightforward interface to send text payloads to a selected webhook URL.</p>
+        <p>A straightforward interface to send text payloads to a selected webhook URL for quick testing.</p>
     </div>
     """, unsafe_allow_html=True)
     
