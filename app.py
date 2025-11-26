@@ -5,8 +5,9 @@ import json
 import re
 from io import BytesIO
 from datetime import datetime
+import altair as alt # New import for data visualization
 
-# Attempt to import ReportLab for PDF generation (from file 2)
+# Attempt to import ReportLab for PDF generation
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -20,10 +21,10 @@ except ImportError:
     REPORTLAB_AVAILABLE = False
     
 # ==========================================
-# PAGE CONFIG (Enhanced)
+# PAGE CONFIG (Ultimate Enhanced)
 # ==========================================
 st.set_page_config(
-    page_title="Ultimate Unified Streamlit Platform",
+    page_title="Ultimate Unified Streamlit Platform v2.0",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -116,7 +117,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# SESSION STATE INITIALIZATION
+# SESSION STATE INITIALIZATION (Expanded)
 # ==========================================
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -147,7 +148,9 @@ if "show_code_panel" not in st.session_state:
 if "webhook_simple_history" not in st.session_state:
     st.session_state.webhook_simple_history = []
 if "code_display_mode" not in st.session_state:
-    st.session_state.code_display_mode = "Prettify" # New state for code viewer
+    st.session_state.code_display_mode = "Prettify"
+if "uploaded_data" not in st.session_state: # New state for Data Analysis
+    st.session_state.uploaded_data = pd.DataFrame()
 
 # ==========================================
 # WEBHOOK CONFIGURATIONS (Expanded)
@@ -569,10 +572,10 @@ def generate_pdf_from_html(html_content, title="Document"):
 with st.sidebar:
     st.markdown("## 🎯 Navigation")
     
-    # Combined navigation
+    # Combined navigation (Added Data Analysis)
     app_mode = st.radio(
         "Select Mode:",
-        ["🎨 Code Viewer", "🤖 AI Webhook Chat", "📤 Simple Webhook Sender"],
+        ["🎨 Code Viewer", "🤖 AI Webhook Chat", "📊 Data Analysis", "📤 Simple Webhook Sender"],
         label_visibility="collapsed"
     )
     
@@ -592,6 +595,7 @@ with st.sidebar:
         st.session_state.current_conversation = []
         st.session_state.webhook_simple_history = []
         st.session_state.code_data = pd.DataFrame()
+        st.session_state.uploaded_data = pd.DataFrame() # Reset uploaded data
         st.session_state.selected_code_number = None
         st.session_state.current_code = "<h1>Welcome</h1><p>Please load data to begin.</p>"
         st.session_state.selected_code_row = {'Title': 'Welcome', 'Category': 'Info', 'Description': 'Load Google Sheet data to begin'}
@@ -887,8 +891,14 @@ elif app_mode == "🤖 AI Webhook Chat":
     cols = st.columns(col_count)
     
     for i, field in enumerate(prompt_fields):
+        # Use session state to persist field values across reruns
+        if f"prompt_field_{field}" not in st.session_state:
+            st.session_state[f"prompt_field_{field}"] = ""
+            
         with cols[i % col_count]:
-            field_values[field] = st.text_input(f"Enter value for **{field}**:", key=f"prompt_field_{field}")
+            field_values[field] = st.text_input(f"Enter value for **{field}**:", 
+                                                value=st.session_state[f"prompt_field_{field}"],
+                                                key=f"prompt_field_{field}")
 
     # Template Buttons
     st.markdown("#### Quick Examples")
@@ -897,7 +907,7 @@ elif app_mode == "🤖 AI Webhook Chat":
     for idx, example in enumerate(webhook_info['examples']):
         with template_cols[idx % 3]:
             if st.button(f"📝 {list(example.values())[0]}...", key=f"template_btn_{idx}", use_container_width=True):
-                # Set the text inputs to the example values
+                # Set the session state values for the fields
                 for field, value in example.items():
                     st.session_state[f"prompt_field_{field}"] = value
                 st.rerun() # Rerun to update text inputs
@@ -1002,6 +1012,128 @@ elif app_mode == "🤖 AI Webhook Chat":
                 st.rerun()
             else:
                 st.warning("Please enter a message to send.")
+
+elif app_mode == "📊 Data Analysis":
+    # ==========================================
+    # DATA ANALYSIS MODE (NEW)
+    # ==========================================
+    
+    st.markdown("""
+    <div class="main-header">
+        <h1>📊 Data Analysis & Visualization</h1>
+        <p>Upload a CSV or Excel file to perform quick data profiling and visualization.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
+    
+    if uploaded_file is not None:
+        try:
+            # Read the file based on its type
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            elif uploaded_file.name.endswith('.xlsx'):
+                df = pd.read_excel(uploaded_file)
+            
+            st.session_state.uploaded_data = df
+            st.success(f"Successfully loaded {len(df)} rows and {len(df.columns)} columns from **{uploaded_file.name}**.")
+            
+        except Exception as e:
+            st.error(f"Error reading file: {e}")
+            st.session_state.uploaded_data = pd.DataFrame()
+    
+    df = st.session_state.uploaded_data
+    
+    if not df.empty:
+        st.markdown("---")
+        st.header("Data Overview")
+        
+        tab1, tab2, tab3 = st.tabs(["Raw Data", "Descriptive Statistics", "Visualization"])
+        
+        with tab1:
+            st.subheader("Raw Data Table")
+            st.dataframe(df)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Rows", len(df))
+            with col2:
+                st.metric("Total Columns", len(df.columns))
+                
+        with tab2:
+            st.subheader("Descriptive Statistics")
+            st.dataframe(df.describe(include='all'))
+            
+            st.subheader("Column Information")
+            col_info = pd.DataFrame({
+                'Data Type': df.dtypes,
+                'Non-Null Count': df.count(),
+                'Unique Values': df.nunique()
+            })
+            st.dataframe(col_info)
+            
+        with tab3:
+            st.subheader("Simple Visualization")
+            
+            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+            
+            if not numeric_cols:
+                st.warning("No numeric columns found for visualization.")
+            else:
+                chart_type = st.selectbox("Select Chart Type:", ["Histogram", "Scatter Plot", "Bar Chart"])
+                
+                if chart_type == "Histogram":
+                    col_hist = st.selectbox("Select Column for Histogram:", numeric_cols)
+                    
+                    if col_hist:
+                        chart = alt.Chart(df).mark_bar().encode(
+                            x=alt.X(col_hist, bin=True, title=col_hist),
+                            y=alt.Y('count()', title='Count'),
+                            tooltip=[col_hist, 'count()']
+                        ).properties(
+                            title=f"Histogram of {col_hist}"
+                        ).interactive()
+                        st.altair_chart(chart, use_container_width=True)
+                        
+                elif chart_type == "Scatter Plot":
+                    col_x = st.selectbox("Select X-axis Column:", numeric_cols, key="scatter_x")
+                    col_y = st.selectbox("Select Y-axis Column:", numeric_cols, key="scatter_y")
+                    
+                    if col_x and col_y:
+                        chart = alt.Chart(df).mark_circle().encode(
+                            x=col_x,
+                            y=col_y,
+                            tooltip=[col_x, col_y]
+                        ).properties(
+                            title=f"Scatter Plot: {col_x} vs {col_y}"
+                        ).interactive()
+                        st.altair_chart(chart, use_container_width=True)
+                        
+                elif chart_type == "Bar Chart":
+                    categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+                    
+                    if not categorical_cols:
+                        st.warning("No categorical columns found for Bar Chart.")
+                    else:
+                        col_bar = st.selectbox("Select Categorical Column for Bar Chart:", categorical_cols)
+                        
+                        if col_bar:
+                            # Count occurrences of each category
+                            source = df[col_bar].value_counts().reset_index()
+                            source.columns = [col_bar, 'Count']
+                            
+                            chart = alt.Chart(source).mark_bar().encode(
+                                x=alt.X(col_bar, sort='-y'),
+                                y='Count',
+                                tooltip=[col_bar, 'Count']
+                            ).properties(
+                                title=f"Bar Chart of {col_bar} Counts"
+                            ).interactive()
+                            st.altair_chart(chart, use_container_width=True)
+    
+    else:
+        st.info("Upload a file above to begin data analysis.")
+
 
 elif app_mode == "📤 Simple Webhook Sender":
     # ==========================================
