@@ -607,196 +607,36 @@ def get_google_sheets_client():
         return None
 
 def fetch_google_sheets_data() -> Optional[pd.DataFrame]:
-    """Fetch data from Google Sheets with exact column mapping."""
+    """
+    Fetch all data from Google Sheets.
+    
+    Returns:
+        DataFrame with all generated codes and metadata, or None if fetch fails.
+    """
     try:
         client = get_google_sheets_client()
         
         if client is None:
-            # Provide demo data if no credentials are set up
-            st.info("Using demo data. Upload a service account JSON file in the sidebar to load real data from Google Sheets.")
-            demo_data = {
-                "Number": [1, 2, 3, 4, 5],
-                "Title": [
-                    "Modern Landing Page Template",
-                    "Professional Invoice Template",
-                    "Company Email Signature",
-                    "Basic Contact Form HTML",
-                    "Streamlit Dashboard for Sales"
-                ],
-                "Category": ["Landing Page", "Invoice", "Email", "Form", "Streamlit"],
-                "Description": [
-                    "A responsive, visually appealing landing page for a tech startup.",
-                    "A clean and calculable invoice with fields for items, taxes, and total.",
-                    "Branded email signature with social media links and contact info.",
-                    "A simple HTML form with basic validation for user input.",
-                    "A Streamlit application to visualize sales data with interactive charts."
-                ],
-                "Code": [
-                    """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Landing Page</title>
-    <style>
-        body { font-family: sans-serif; margin: 40px; background-color: #f4f7f6; }
-        .hero { text-align: center; padding: 50px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h1 { color: #333; }
-        p { color: #666; }
-        .cta-button { background-color: #667eea; color: white; padding: 12px 25px; border: none; border-radius: 5px; text-decoration: none; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class="hero">
-        <h1>Welcome to Our Amazing Product!</h1>
-        <p>Revolutionize your workflow with our cutting-edge solution.</p>
-        <a href="#" class="cta-button">Get Started Today</a>
-    </div>
-</body>
-</html>
-                    """,
-                    """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Invoice</title>
-    <style>
-        body { font-family: sans-serif; margin: 20px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .total { font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>INVOICE</h1>
-    <p><strong>Invoice #:</strong> 12345</p>
-    <p><strong>Date:</strong> 2023-10-27</p>
-    <table>
-        <thead>
-            <tr>
-                <th>Item</th>
-                <th>Quantity</th>
-                <th>Price</th>
-                <th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>Service A</td>
-                <td>2</td>
-                <td>$100.00</td>
-                <td>$200.00</td>
-            </tr>
-            <tr>
-                <td>Product B</td>
-                <td>1</td>
-                <td>$50.00</td>
-                <td>$50.00</td>
-            </tr>
-        </tbody>
-        <tfoot>
-            <tr>
-                <td colspan="3" class="total">Subtotal</td>
-                <td>$250.00</td>
-            </tr>
-            <tr>
-                <td colspan="3" class="total">Tax (10%)</td>
-                <td>$25.00</td>
-            </tr>
-            <tr>
-                <td colspan="3" class="total">Grand Total</td>
-                <td>$275.00</td>
-            </tr>
-        </tfoot>
-    </table>
-</body>
-</html>
-                    """,
-                    """
-<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333;">
-    <p>Best regards,<br>
-    <strong>John Doe</strong><br>
-    Web Developer<br>
-    <a href="mailto:john.doe@example.com" style="color: #667eea; text-decoration: none;">john.doe@example.com</a> | 
-    <a href="https://www.example.com" style="color: #667eea; text-decoration: none;">www.example.com</a> | 
-    <a href="https://linkedin.com/in/johndoe" style="color: #667eea; text-decoration: none;">LinkedIn</a>
-    </p>
-</div>
-                    """,
-                    """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Contact Form</title>
-    <style>
-        body { font-family: sans-serif; }
-        .form-container { width: 400px; margin: 50px auto; padding: 30px; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        label { display: block; margin-bottom: 8px; font-weight: bold; }
-        input[type="text"], input[type="email"], textarea { width: calc(100% - 20px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
-        button { background-color: #667eea; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
-    </style>
-</head>
-<body>
-    <div class="form-container">
-        <h2>Contact Us</h2>
-        <form action="/submit-form" method="post">
-            <label for="name">Name:</label>
-            <input type="text" id="name" name="name" required>
-            
-            <label for="email">Email:</label>
-            <input type="email" id="email" name="email" required>
-            
-            <label for="message">Message:</label>
-            <textarea id="message" name="message" rows="4" required></textarea>
-            
-            <button type="submit">Send Message</button>
-        </form>
-    </div>
-</body>
-</html>
-                    """,
-                    """
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-
-st.set_page_config(layout="wide")
-
-st.title("Sales Dashboard")
-
-# Sample Data
-data = {
-    'Date': pd.to_datetime(['2023-10-20', '2023-10-21', '2023-10-22', '2023-10-23', '2023-10-24']),
-    'Region': ['North', 'South', 'East', 'West', 'North'],
-    'Sales': [150, 200, 180, 220, 160],
-    'Profit': [30, 45, 40, 50, 35]
-}
-df = pd.DataFrame(data)
-
-# Charts
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Sales Over Time")
-    fig_sales = px.line(df, x='Date', y='Sales', title='Daily Sales')
-    st.plotly_chart(fig_sales, use_container_width=True)
-
-with col2:
-    st.subheader("Sales by Region")
-    fig_region = px.bar(df, x='Region', y='Sales', title='Sales per Region')
-    st.plotly_chart(fig_region, use_container_width=True)
-
-st.subheader("Data Table")
-st.dataframe(df)
-                    """
-                ],
-                "PDF_Enabled": ["TRUE", "TRUE", "FALSE", "FALSE", "FALSE"],
-                "Timestamp": [datetime.now().isoformat()] * 5,
-                "Agent_Name": ["Landing Page Generator", "Invoice Generator", "Email Signature Generator", "Form Generator", "Streamlit Dashboard Generator"]
+            # For demo purposes, we'll create sample data structure
+            # In production, use gspread library with OAuth2 credentials
+            sample_data = {
+                "Number": [],
+                "Title": [],
+                "Category": [],
+                "Description": [],
+                "Code": [],
+                "PDF_Enabled": [],
+                "Timestamp": [],
+                "Agent_Name": []
             }
-            return pd.DataFrame(demo_data)
+            
+            # Create DataFrame from sample data
+            df = pd.DataFrame(sample_data)
+            
+            if len(df) > 0:
+                st.session_state.last_gsheet_update = datetime.now()
+            
+            return df if len(df) > 0 else None
         
         # If client is available, fetch from Google Sheets
         sheet = client.open_by_key(GOOGLE_SHEETS_ID)
@@ -814,75 +654,62 @@ st.dataframe(df)
         
         df = pd.DataFrame(rows, columns=headers)
         
-        # Convert Number and PDF_Enabled columns to appropriate types if they exist
+        # Convert Number to numeric if column exists
         if 'Number' in df.columns:
             df['Number'] = pd.to_numeric(df['Number'], errors='coerce')
-        if 'PDF_Enabled' in df.columns:
-            df['PDF_Enabled'] = df['PDF_Enabled'].apply(lambda x: x.lower() == 'true' if pd.notna(x) else False)
-
-        # Update last sync time
-        st.session_state.last_gsheet_update = datetime.now()
-        st.session_state.gsheet_sync_message = f"Successfully fetched {len(df)} rows from Google Sheets."
-        st.session_state.gsheet_connected = True
         
-        return df
+        # Update session state
+        if len(df) > 0:
+            st.session_state.last_gsheet_update = datetime.now()
+        
+        return df if len(df) > 0 else None
     
     except Exception as e:
-        st.error(f"Error fetching Google Sheets data: {str(e)}")
-        st.session_state.gsheet_sync_message = f"Error: {str(e)}"
-        st.session_state.gsheet_connected = False
+        st.warning(f"Could not fetch Google Sheets data: {str(e)}")
         return None
-# -----------------------------------
 
 
 def format_code_preview(code: str, language: str = "html", max_lines: int = 30) -> str:
-    """Format code for preview display."""
+    """
+    Format code for preview display.
+    
+    Args:
+        code: The code to format
+        language: Programming language (html, python, javascript)
+        max_lines: Maximum number of lines to show
+        
+    Returns:
+        Formatted code string
+    """
     lines = code.split('\n')
     if len(lines) > max_lines:
         return '\n'.join(lines[:max_lines]) + f"\n\n... ({len(lines) - max_lines} more lines)"
     return code
 
-def get_statistics() -> Dict[str, Any]:
-    """Calculate comprehensive statistics from all generated content."""
-    total_codes = len(st.session_state.generated_codes)
-    total_docs = len(st.session_state.generated_documents)
+# Replace get_statistics with get_code_statistics
+def get_code_statistics() -> Dict[str, Any]:
+    """Calculate statistics from generated codes."""
+    if not st.session_state.generated_codes:
+        return {
+            "total": 0,
+            "html": 0,
+            "python": 0,
+            "avg_length": 0,
+            "total_length": 0
+        }
     
-    html_count = sum(1 for c in st.session_state.generated_codes if c['code_type'] == 'HTML/CSS/JS')
-    python_count = sum(1 for c in st.session_state.generated_codes if c['code_type'] == 'Python/Streamlit')
-    
-    total_code_length = sum(len(c['code']) for c in st.session_state.generated_codes)
-    avg_code_length = total_code_length // total_codes if total_codes > 0 else 0
-    
-    total_response_time = sum(c.get('response_time', 0) for c in st.session_state.generated_codes if 'response_time' in c)
-    avg_response_time = total_response_time / total_codes if total_codes > 0 else 0
+    codes = st.session_state.generated_codes
+    html_count = sum(1 for c in codes if c['code_type'] == 'HTML/CSS/JS')
+    python_count = sum(1 for c in codes if c['code_type'] == 'Python/Streamlit')
+    total_length = sum(len(c['code']) for c in codes)
     
     return {
-        "total_codes": total_codes,
-        "total_documents": total_docs,
-        "total_all": total_codes + total_docs,
+        "total": len(codes),
         "html": html_count,
         "python": python_count,
-        "avg_code_length": avg_code_length,
-        "total_code_length": total_code_length,
-        "avg_response_time": avg_response_time
+        "avg_length": total_length // len(codes) if codes else 0,
+        "total_length": total_length
     }
-
-def create_display_card(title: str, content: str, card_type: str = "code", metadata: Dict = None):
-    """Create a display card for content."""
-    if metadata is None:
-        metadata = {}
-    
-    badge_color = "agent-badge" if card_type == "code" else "category-badge"
-    
-    card_html = f"""
-    <div class="content-card">
-        <h3>{title}</h3>
-        <span class="{badge_color}">{metadata.get('type', 'Unknown')}</span>
-        <p><strong>Created:</strong> {metadata.get('timestamp', 'N/A')}</p>
-        <p><strong>Agent:</strong> {metadata.get('agent', 'N/A')}</p>
-    </div>
-    """
-    return card_html
 
 # ============================================================================
 # SIDEBAR
@@ -966,19 +793,20 @@ with st.sidebar:
     # Statistics section
     st.markdown('<div class="sidebar-title">Live Statistics</div>', unsafe_allow_html=True)
     
-    stats = get_statistics()
+    # Use get_code_statistics for code specific stats
+    stats = get_code_statistics()
     
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Total", stats['total_all'], delta=None)
+        st.metric("Total Codes", stats['total'], delta=None)
         st.metric("HTML/CSS", stats['html'])
     with col2:
-        st.metric("Documents", stats['total_documents'])
         st.metric("Python", stats['python'])
+        st.metric("Avg Length", f"{stats['avg_length']:,} chars" if stats['avg_length'] > 0 else "0 chars")
     
-    if stats['total_codes'] > 0:
-        st.metric("Avg Code Length", f"{stats['avg_code_length']:,} chars")
-        st.metric("Avg Response", f"{stats['avg_response_time']:.2f}s")
+    # Total documents metric should still be displayed
+    total_docs = len(st.session_state.generated_documents)
+    st.metric("Total Documents", total_docs)
     
     st.markdown("---")
     
@@ -1067,14 +895,17 @@ st.markdown('<div class="subtitle">Generate production-ready code and profession
 
 # Quick stats bar
 col1, col2, col3, col4, col5 = st.columns(5)
-stats = get_statistics()
+# Use get_code_statistics for code specific stats
+stats = get_code_statistics()
+total_docs = len(st.session_state.generated_documents) # Get total documents
+total_all_items = stats['total'] + total_docs # Combine code and document counts
 
 with col1:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Total</div><div class="metric-value">{stats["total_all"]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Total Items</div><div class="metric-value">{total_all_items}</div></div>', unsafe_allow_html=True)
 with col2:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Codes</div><div class="metric-value">{stats["total_codes"]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Code Files</div><div class="metric-value">{stats["total"]}</div></div>', unsafe_allow_html=True)
 with col3:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Docs</div><div class="metric-value">{stats["total_documents"]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Documents</div><div class="metric-value">{total_docs}</div></div>', unsafe_allow_html=True)
 with col4:
     st.markdown(f'<div class="metric-card"><div class="metric-label">HTML</div><div class="metric-value">{stats["html"]}</div></div>', unsafe_allow_html=True)
 with col5:
@@ -1703,26 +1534,29 @@ with tab5:
         # Overall KPIs
         st.markdown("#### 📈 Key Performance Indicators")
         
-        stats = get_statistics()
+        # Use get_code_statistics for code specific stats
+        stats = get_code_statistics()
+        total_docs = len(st.session_state.generated_documents) # Get total documents
+        total_all_items = stats['total'] + total_docs # Combine code and document counts
         
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
-            st.markdown(f'<div class="metric-card"><div class="metric-label">Total Generated</div><div class="metric-value">{stats["total_all"]}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Total Items</div><div class="metric-value">{total_all_items}</div></div>', unsafe_allow_html=True)
         
         with col2:
-            st.markdown(f'<div class="metric-card"><div class="metric-label">Code Files</div><div class="metric-value">{stats["total_codes"]}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Code Files</div><div class="metric-value">{stats["total"]}</div></div>', unsafe_allow_html=True)
         
         with col3:
-            st.markdown(f'<div class="metric-card"><div class="metric-label">Documents</div><div class="metric-value">{stats["total_documents"]}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Documents</div><div class="metric-value">{total_docs}</div></div>', unsafe_allow_html=True)
         
         with col4:
-            if stats['avg_code_length'] > 0:
-                st.markdown(f'<div class="metric-card"><div class="metric-label">Avg Length</div><div class="metric-value">{stats["avg_code_length"]:,}</div></div>', unsafe_allow_html=True)
+            if stats['avg_length'] > 0:
+                st.markdown(f'<div class="metric-card"><div class="metric-label">Avg Code Len</div><div class="metric-value">{stats["avg_length"]:,}</div></div>', unsafe_allow_html=True)
         
         with col5:
-            if stats['avg_response_time'] > 0:
-                st.markdown(f'<div class="metric-card"><div class="metric-label">Avg Time (s)</div><div class="metric-value">{stats["avg_response_time"]:.2f}</div></div>', unsafe_allow_html=True)
+            if stats['total_length'] > 0: # This metric is less meaningful on its own, maybe remove or re-evaluate
+                st.markdown(f'<div class="metric-card"><div class="metric-label">Total Code Len</div><div class="metric-value">{stats["total_length"]:,}</div></div>', unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -2049,312 +1883,92 @@ with tab5:
 # ============================================================================
 
 with tab6:
-    st.markdown('<div class="tab-header">📥 Google Sheets Integration</div>', unsafe_allow_html=True)
+    st.markdown("### 📥 Google Sheets Integration")
     
-    # Connection info
-    st.info(f"📊 **Sheet ID:** `{GOOGLE_SHEETS_ID}`\n\n📄 **Sheet Name:** `{GOOGLE_SHEETS_SHEET_NAME}`")
+    st.markdown("**Sheet ID:** `1eFZcnDoGT2NJHaEQSgxW5psN5kvlkYx1vtuXGRFTGTk`")
+    st.markdown("**Sheet Name:** `demo_examples`")
     
-    col1, col2, col3 = st.columns([2, 1, 1])
+    col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### 🔄 Data Synchronization")
-    
-    # CHANGE: Ensure data loads immediately on upload and displays correctly
-    with col2:
-        if st.button("🔄 Refresh Data", use_container_width=True, key="refresh_gsheet"):
+        if st.button("🔄 Fetch Latest Data", use_container_width=True):
             with st.spinner("Fetching data from Google Sheets..."):
-                df = fetch_google_sheets_data()
-                if df is not None:
-                    st.session_state.gsheet_data = df
-                    st.session_state.last_gsheet_update = datetime.now()
-                    st.success(f"✅ Synced {len(df)} records")
-                    st.rerun()
+                st.session_state.gsheet_data = fetch_google_sheets_data()
+                if st.session_state.gsheet_data is not None:
+                    st.success(f"✅ Loaded {len(st.session_state.gsheet_data)} rows from Google Sheets!")
                 else:
-                    st.error("❌ Failed to load data")
+                    st.info("ℹ️ No data available in Google Sheets yet.")
     
-    with col3:
-        if st.button("📤 Sync to Sheet", use_container_width=True, key="sync_to_gsheet"):
-            st.info("🔄 Sync feature requires write permissions and is not fully implemented in this demo.")
-            # In a real implementation, this would push data from session_state.generated_codes
-            # to the Google Sheet using gspread.
-            # For now, it's a placeholder.
+    with col2:
+        if st.button("📋 View Sheet Structure", use_container_width=True):
+            st.info("""
+**Google Sheets Columns:**
+- Number: Sequential ID
+- Title: User request summary
+- Category: AI-classified category
+- Description: Detailed description
+- Code: Full generated code
+- PDF_Enabled: PDF export flag
+- Timestamp: ISO 8601 timestamp
+- Agent_Name: Generator agent name
+            """)
     
-    # CHANGE: Auto-load data on first visit and show sync status
-    if st.session_state.gsheet_data is None:
-        with st.spinner("Loading data from Google Sheets..."):
-            df = fetch_google_sheets_data()
-            if df is not None:
-                st.session_state.gsheet_data = df
-                st.session_state.last_gsheet_update = datetime.now()
-
-    # Show sync status
-    if hasattr(st.session_state, 'last_gsheet_update') and st.session_state.last_gsheet_update:
-        sync_time = st.session_state.last_gsheet_update.strftime('%H:%M:%S')
-        if st.session_state.gsheet_data is not None:
-            st.success(f"✅ Last sync: {sync_time} | Synced {len(st.session_state.gsheet_data)} records")
-
     st.markdown("---")
     
-    # CHANGE: Display data with better error handling and visual feedback
     if st.session_state.gsheet_data is not None and len(st.session_state.gsheet_data) > 0:
-        df = st.session_state.gsheet_data.copy()
+        st.markdown("#### 📊 Google Sheets Data")
         
-        # Metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("📊 Total Records", len(df))
-        with col2:
-            st.metric("📂 Columns", len(df.columns))
-        with col3:
-            if 'Category' in df.columns:
-                unique_categories = df['Category'].nunique()
-                st.metric("🏷️ Categories", unique_categories)
-            else:
-                st.metric("🏷️ Categories", "N/A")
-        with col4:
-            if 'PDF_Enabled' in df.columns:
-                # Handle different data types for PDF_Enabled
-                try:
-                    if df['PDF_Enabled'].dtype == bool:
-                        pdf_count = df['PDF_Enabled'].sum()
-                    else:
-                        pdf_count = (df['PDF_Enabled'].astype(str).str.upper() == 'TRUE').sum()
-                    st.metric("📄 PDF Enabled", pdf_count)
-                except:
-                    st.metric("📄 PDF Enabled", "N/A")
-            else:
-                st.metric("📄 PDF Enabled", "N/A")
+        st.dataframe(
+            st.session_state.gsheet_data,
+            use_container_width=True,
+            height=400
+        )
         
         st.markdown("---")
         
-        # CHANGE: Enhanced filters and search
-        col1, col2 = st.columns([2, 1])
+        # Export options
+        st.markdown("#### 📥 Export Options")
+        
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            search_term = st.text_input("🔍 Search in Title, Description, or Code", placeholder="Type to search...", key="gsheet_search")
-        
-        with col2:
-            if 'Category' in df.columns:
-                categories = ['All'] + sorted([str(cat) for cat in df['Category'].unique() if pd.notna(cat)])
-                selected_category = st.selectbox("🏷️ Filter by Category", categories, key="gsheet_category")
-            else:
-                selected_category = 'All'
-        
-        # Apply filters
-        filtered_df = df.copy()
-        
-        if search_term:
-            mask = pd.Series([False] * len(filtered_df))
-            if 'Title' in filtered_df.columns:
-                mask |= filtered_df['Title'].astype(str).str.contains(search_term, case=False, na=False)
-            if 'Description' in filtered_df.columns:
-                mask |= filtered_df['Description'].astype(str).str.contains(search_term, case=False, na=False)
-            if 'Code' in filtered_df.columns:
-                mask |= filtered_df['Code'].astype(str).str.contains(search_term, case=False, na=False)
-            filtered_df = filtered_df[mask]
-        
-        if 'Category' in df.columns and selected_category != 'All':
-            filtered_df = filtered_df[filtered_df['Category'].astype(str) == selected_category]
-        
-        st.markdown(f"**Showing {len(filtered_df)} of {len(df)} records**")
-        
-        # CHANGE: Display tabs for different views
-        view_tab1, view_tab2, view_tab3 = st.tabs(["📋 Card View", "📊 Table View", "📈 Analytics"])
-        
-        with view_tab1:
-            if len(filtered_df) == 0:
-                st.warning("No records match your search criteria")
-            else:
-                for idx, row in filtered_df.iterrows():
-                    with st.expander(f"#{row.get('Number', idx+1)} - {row.get('Title', 'Untitled')}", expanded=False):
-                        col1, col2 = st.columns([2, 1])
-                        
-                        with col1:
-                            st.markdown(f"**📂 Category:** `{row.get('Category', 'N/A')}`")
-                            st.markdown(f"**📝 Description:** {row.get('Description', 'No description')}")
-                            
-                            if 'PDF_Enabled' in row:
-                                pdf_enabled = str(row.get('PDF_Enabled', '')).upper() == 'TRUE'
-                                pdf_icon = "✅" if pdf_enabled else "❌"
-                                st.markdown(f"**📄 PDF Enabled:** {pdf_icon} {pdf_enabled}")
-                        
-                        with col2:
-                            if 'Code' in row and pd.notna(row['Code']) and str(row['Code']).strip():
-                                # Determine language based on code content
-                                code_content = str(row['Code'])
-                                if 'import streamlit' in code_content.lower():
-                                    lang = 'python'
-                                elif '<!DOCTYPE html>' in code_content or '<html' in code_content:
-                                    lang = 'html'
-                                else:
-                                    lang = 'text'
-                                
-                                if st.button(f"👁️ Preview Code", key=f"view_code_{idx}", use_container_width=True):
-                                    st.code(code_content, language=lang)
-                                
-                                # Download button
-                                file_ext = 'py' if lang == 'python' else 'html'
-                                file_name = f"{str(row.get('Title', 'code')).replace(' ', '_')}.{file_ext}"
-                                
-                                st.download_button(
-                                    label="📥 Download",
-                                    data=code_content,
-                                    file_name=file_name,
-                                    mime=f"text/{file_ext}",
-                                    key=f"download_{idx}",
-                                    use_container_width=True
-                                )
-                            else:
-                                st.info("No code available")
-        
-        with view_tab2:
-            # CHANGE: Enhanced table view with column selection
-            if len(filtered_df) > 0:
-                available_columns = filtered_df.columns.tolist()
-                selected_columns = st.multiselect(
-                    "Select columns to display",
-                    available_columns,
-                    default=available_columns[:6] if len(available_columns) > 6 else available_columns,
-                    key="table_columns"
-                )
-                
-                if selected_columns:
-                    display_df = filtered_df[selected_columns].copy()
-                    
-                    # Truncate long text for better display
-                    for col in display_df.columns:
-                        if display_df[col].dtype == 'object':
-                            display_df[col] = display_df[col].astype(str).apply(
-                                lambda x: x[:100] + '...' if len(x) > 100 else x
-                            )
-                    
-                    st.dataframe(
-                        display_df,
-                        use_container_width=True,
-                        height=500,
-                        hide_index=True
-                    )
-                else:
-                    st.warning("Please select at least one column to display")
-            else:
-                st.warning("No records to display")
-        
-        with view_tab3:
-            # CHANGE: Enhanced analytics with multiple charts
-            if len(filtered_df) > 0 and 'Category' in filtered_df.columns:
-                st.subheader("📊 Category Distribution")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # Pie chart
-                    category_counts = filtered_df['Category'].value_counts()
-                    fig_pie = px.pie(
-                        values=category_counts.values,
-                        names=category_counts.index,
-                        title="Records by Category",
-                        hole=0.4,
-                        color_discrete_sequence=px.colors.qualitative.Set3
-                    )
-                    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                    st.plotly_chart(fig_pie, use_container_width=True)
-                
-                with col2:
-                    # Bar chart
-                    fig_bar = px.bar(
-                        x=category_counts.index,
-                        y=category_counts.values,
-                        labels={'x': 'Category', 'y': 'Count'},
-                        title="Category Counts",
-                        color=category_counts.values,
-                        color_continuous_scale='Viridis'
-                    )
-                    fig_bar.update_layout(showlegend=False)
-                    st.plotly_chart(fig_bar, use_container_width=True)
-                
-                # Additional metrics
-                st.subheader("📈 Additional Metrics")
-                metric_col1, metric_col2, metric_col3 = st.columns(3)
-                
-                with metric_col1:
-                    if 'Code' in filtered_df.columns:
-                        avg_code_length = filtered_df['Code'].astype(str).str.len().mean()
-                        st.metric("📏 Avg Code Length", f"{int(avg_code_length)} chars")
-                
-                with metric_col2:
-                    if 'Description' in filtered_df.columns:
-                        avg_desc_length = filtered_df['Description'].astype(str).str.len().mean()
-                        st.metric("📝 Avg Description", f"{int(avg_desc_length)} chars")
-                
-                with metric_col3:
-                    most_common_category = category_counts.index[0] if len(category_counts) > 0 else "N/A"
-                    st.metric("🏆 Top Category", most_common_category)
-            else:
-                st.info("Not enough data for analytics. Add more records with categories.")
-        
-        st.markdown("---")
-        
-        # CHANGE: Enhanced export options
-        st.markdown("### 📥 Export Data")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            csv_data = filtered_df.to_csv(index=False)
+            csv = st.session_state.gsheet_data.to_csv(index=False)
             st.download_button(
-                label="📄 CSV",
-                data=csv_data,
-                file_name=f"sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                label="📥 CSV",
+                data=csv,
+                file_name=f"gsheet_export_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
         
         with col2:
-            json_data = filtered_df.to_json(orient='records', indent=2)
+            json_data = st.session_state.gsheet_data.to_json(orient='records')
             st.download_button(
-                label="📋 JSON",
+                label="📥 JSON",
                 data=json_data,
-                file_name=f"sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                file_name=f"gsheet_export_{datetime.now().strftime('%Y%m%d')}.json",
                 mime="application/json",
                 use_container_width=True
             )
         
         with col3:
-            # Excel export using openpyxl
-            from io import BytesIO
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                filtered_df.to_excel(writer, index=False, sheet_name='Export')
-            excel_data = output.getvalue()
+            # Excel export
+            import io
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                st.session_state.gsheet_data.to_excel(writer, index=False)
+            buffer.seek(0)
             
             st.download_button(
-                label="📊 Excel",
-                data=excel_data,
-                file_name=f"sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                label="📥 Excel",
+                data=buffer.getvalue(),
+                file_name=f"gsheet_export_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
-        
-        with col4:
-            html_data = filtered_df.to_html(index=False)
-            st.download_button(
-                label="🌐 HTML",
-                data=html_data,
-                file_name=f"sheets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                mime="text/html",
-                use_container_width=True
-            )
-
+    
     else:
-        st.warning("⚠️ No data available. Click 'Refresh Data' to load from Google Sheets or upload a service account JSON file in the sidebar.")
-        
-        if st.button("🔄 Try Loading Now", use_container_width=True, type="primary"):
-            with st.spinner("Loading data..."):
-                df = fetch_google_sheets_data()
-                if df is not None:
-                    st.session_state.gsheet_data = df
-                    st.session_state.last_gsheet_update = datetime.now()
-                    st.rerun()
+        st.info("📭 No data in Google Sheets yet. Generate some code to populate the sheet!")
 
 # ============================================================================
 # FOOTER
